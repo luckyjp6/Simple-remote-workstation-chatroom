@@ -1,10 +1,10 @@
-TARGET = server.o npshell.o functions.o
+TARGET = npshell.o functions.o np_simple.o
 
-npshell: $(TARGET)
-	g++ -o server $(TARGET)
+np_sime:  $(TARGET)
+	g++ -o np_simple $(TARGET)
 
-server.o: server.cpp
-	g++ -c server.cpp
+np_simple.o: np_simple.cpp
+	g++ -c np_simple.cpp
 
 npshell.o: npshell.cpp npshell.h
 	g++ -c npshell.cpp
@@ -14,4 +14,4 @@ functions.o: functions.cpp functions.h
 
 .PHONY: clean
 clean:
-	-rm edit npshell.o
+	-rm edit $(TARGET)

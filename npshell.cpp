@@ -66,13 +66,13 @@ int execute_command(my_cmd &command)
 	{	
 		update_pipe_num_to();
 		my_setenv(command);
-		return 0;
+		return 1;
 	}
 	if (command.argv[0] == "printenv") 
 	{
 		update_pipe_num_to();
 		my_printenv(command);
-		return 0;
+		return 1;
 	}
 
 	args cmd;
@@ -100,7 +100,7 @@ int execute_command(my_cmd &command)
 	{
 		char err[] = "failed to fork\n";
 		Writen(STDERR_FILENO, err, sizeof(err));
-		return 0;
+		return 1;
 	}
 
 	// parent do
@@ -121,7 +121,7 @@ int execute_command(my_cmd &command)
 
 		// process data from multiple pipe
 		if (need_data && data_list.size() != 0) 
-		if (handle_data_from_multiple_pipe(data_pipe, data_list) == 0) return 0;
+		if (handle_data_from_multiple_pipe(data_pipe, data_list) == 0) return 1;
 		return 1;
 	}
 	//child do
@@ -154,7 +154,7 @@ int execute_command(my_cmd &command)
 			if (set_output_to_file(command) == 0)
 			{
 				free(cmd.argv);
-				return 0;
+				return 1;
 			}
 		}
 
@@ -175,7 +175,7 @@ int execute_command(my_cmd &command)
 			// close pipe
 			if (need_data) close(data_pipe[0]);
 			if (need_pipe) close(p_num[1]);
-			return 0;
+			return 1;
 		}
 	}
 
@@ -222,7 +222,7 @@ int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
 			close(id);
 		}
 		close(data_pipe[1]);
-		return 0;
+		return 1;
 	}else{
 		close(data_pipe[1]);
 		for(auto id: data_list) close(id);
