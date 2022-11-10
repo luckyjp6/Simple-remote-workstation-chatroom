@@ -26,10 +26,10 @@ struct args{
 	int p_num = -1; // pipe id, used in conditional_wait()
 };
 
-extern std::vector<my_cmd> C; // after read one line of commands, stores them here
-extern std::map< size_t, args> args_of_cmd; // pid, args
-extern std::map< size_t, int > pipe_num_to; // pipe_num, counter
-extern my_cmd tmp; // used in clear_tmp() and process_pipe_info()
+// extern std::vector<my_cmd> C; // after read one line of commands, stores them here
+// extern std::map< size_t, args> args_of_cmd; // pid, args
+// extern std::map< size_t, int > pipe_num_to; // pipe_num, counter
+// extern my_cmd tmp; // used in clear_tmp() and process_pipe_info()
 
 void parse_line(char *line);
 int execute_command(my_cmd &command);

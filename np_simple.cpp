@@ -1,5 +1,4 @@
 #include "functions.h"
-#include "npshell.h"
 
 int main(int argc, char **argv)
 {
@@ -15,36 +14,49 @@ int main(int argc, char **argv)
     int	                i, nready;
 
     init();
-	signal(SIGCHLD, sig_chld);
     
     if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
 
     Client_info tmp_client;
     socklen_t clilen = sizeof(cliaddr);
 
-    char buf[MSG_SIZE-50];
-    connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);
-	while(read(connfd, buf, MSG_SIZE-50) > 0) 
-    { 
-        /* read command */
-        parse_line(buf);
-
-        // execute commands
-        for (int i = 0; i < C.size(); i++)
-        {
-            if (i % 50 == 0 && i != 0) conditional_wait();
-            if (execute_command(C[i]) == 0) break;
-        }
-        
-        update_pipe_num_to();
-        conditional_wait();
-        C.clear();
-    }
-    wait_all_children();
+    while(true)
+    {
+        connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);
 	
-    if (errno != ECONNRESET) err_sys("read error");
-    close_client(i); 
+        int pid = fork();
+        if (pid < 0) 
+        {
+            printf("Fork error\n");
+            return -1;
+        }
+        if (pid == 0) 
+        {
+            dup2(connfd, STDIN_FILENO);
+            dup2(connfd, STDOUT_FILENO);
+            dup2(connfd, STDERR_FILENO);
+            
+            char **npshell = (char**) malloc(sizeof(char*));
+            npshell[0] = new char;
+            strcpy(npshell[0], "npshell");
+            setenv("PATH", ".", 1);
+            if (execvp("npshell", npshell) < 0)
+            {
+                char err[1024];
+                sprintf(err, "Fail to exec\n");
+                write(STDERR_FILENO, err, strlen(err));
+
+                close(connfd);
+                return -1;
+            }
+        }
+        else 
+        {   
+            close(connfd);
+            wait(NULL);
+        }
+    }
+
     
-    /* parent closes connected socket */
-    close(connfd);
+    return 0;
 }

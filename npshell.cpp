@@ -1,10 +1,173 @@
 #include "npshell.h"
 
+#define LINE_MAX 10000
 
 std::vector<my_cmd> C; // after read one line of commands, stores them here
 std::map< size_t, args> args_of_cmd; // pid, args
 std::map< size_t, int > pipe_num_to; // pipe_num, counter
 my_cmd tmp; // used in clear_tmp() and process_pipe_info()
+
+int main(int argc, char **argv)
+{
+	setenv("PATH", "bin:.", 1);
+	signal(SIGCHLD, sig_chld);
+
+	bool should_run = true;
+	while(should_run)
+	{
+		printf("%% "); fflush(stdout);
+		char line[LINE_MAX];
+		int input_length = read(STDIN_FILENO, line, LINE_MAX);
+
+		if (input_length < 0)
+		{
+			err_sys("failed to read\n");
+			return -1;
+		}
+		else if (input_length <= 1) continue; // blank line
+
+		parse_line(line);
+
+		int i = 0;
+		for (auto command: C)
+		{
+			if (i++ % 50 == 0 && i != 0) conditional_wait();
+
+			if (command.argv[0] == "exit") {
+				update_pipe_num_to();
+				C.clear();
+				should_run = false;
+				break;
+			}
+			if (command.argv[0] == "setenv") 
+			{	
+				update_pipe_num_to();
+				my_setenv(command);
+				continue;
+			}
+			if (command.argv[0] == "printenv") 
+			{
+				update_pipe_num_to();
+				my_printenv(command);
+				continue;
+			}
+
+			args cmd;
+			cmd.argc = command.argv.size();
+			cmd.argv = (char**) malloc(sizeof(char*) * (cmd.argc+1));
+			cmd.number_pipe = command.number_pipe;
+
+			bool need_data, need_pipe = (command.pipe_to > 0);
+			size_t pid;
+			int p_num[2], data_pipe[2];
+			std::vector<int> data_list;
+
+			// record pipe descripter for the command behind to read
+			if (need_pipe) 
+			{
+				pipe(p_num);
+				cmd.p_num = p_num[0];
+			}
+
+			check_need_data(need_data, data_pipe, data_list);
+			
+			// fork
+			pid = fork();
+			if (pid < 0) 
+			{
+				char *err;
+				sprintf(err, "failed to fork\n");
+				Writen(STDERR_FILENO, err, strlen(err));
+				break;
+			}
+
+			// parent do
+			if (pid > 0)
+			{
+				if (need_pipe) close(p_num[1]);
+				if (need_data) close(data_pipe[0]);
+
+				// record memory allocate address
+				args_of_cmd.insert(std::pair<size_t, args> (pid, cmd));
+				
+				// update when new line
+				if (command.number_pipe) update_pipe_num_to();
+				
+				// store read id of pipe
+				if (command.number_pipe) pipe_num_to.insert(std::pair<size_t, int>(p_num[0], command.pipe_to-1));
+				else if (need_pipe) pipe_num_to.insert(std::pair<size_t, int>(p_num[0], 0));
+
+				// process data from multiple pipe
+				if (need_data && data_list.size() != 0) 
+					if (handle_data_from_multiple_pipe(data_pipe, data_list) == 0) break;
+				
+				continue;
+			}
+			//child do
+			else {
+				
+				// received data from other process
+				if (need_data) 
+				{
+					// parent will handle multiple pipes of data
+					if (data_list.size() != 0) 
+					{
+						close(data_pipe[1]);
+						for(auto id: data_list) close(id);
+					}
+
+					dup2(data_pipe[0], STDIN_FILENO);
+				}
+
+				// pipe stderr
+				if (command.err) dup2(p_num[1], STDERR_FILENO);
+
+				// pipe data to other process
+				if (need_pipe) {
+					close(p_num[0]);
+					dup2(p_num[1], STDOUT_FILENO);
+				}
+
+				// store data to a file
+				if (command.store_addr.size() > 0) {
+					if (set_output_to_file(command) == 0)
+					{
+						free(cmd.argv);
+						return -1;
+					}
+				}
+
+				// get the arguments ready
+				for (int j = 0; j < cmd.argc; j++){
+					cmd.argv[j] = (char*) malloc(sizeof(char) * command.argv[j].size()+1);
+					strcpy(cmd.argv[j], command.argv[j].c_str());
+				}
+				cmd.argv[cmd.argc] = new char;
+				cmd.argv[cmd.argc] = NULL;
+
+				// exec!!!!
+				if (execvp(cmd.argv[0], cmd.argv) < 0) {
+					char err[1024];
+					sprintf(err, "Unknown command: [%s].\n", cmd.argv[0]);
+					Writen(STDERR_FILENO, err, strlen(err));
+
+					// close pipe
+					if (need_data) close(data_pipe[0]);
+					if (need_pipe) close(p_num[1]);
+					return -1;
+				}
+			}
+		}
+
+		// wait for all children, except for command with number pipe
+		conditional_wait();
+		C.clear();
+	}
+
+	// wait for all children
+	wait_all_children();
+	return 0;
+}
 
 void parse_line(char *line)
 {
@@ -53,133 +216,6 @@ void parse_line(char *line)
 	{
 		printf("command: %s\n", C[i].argv[0].data());
 	}
-}
-
-int execute_command(my_cmd &command)
-{
-	if (command.argv[0] == "exit") {
-		update_pipe_num_to();
-		C.clear();
-		return 0;
-	}
-	if (command.argv[0] == "setenv") 
-	{	
-		update_pipe_num_to();
-		my_setenv(command);
-		return 1;
-	}
-	if (command.argv[0] == "printenv") 
-	{
-		update_pipe_num_to();
-		my_printenv(command);
-		return 1;
-	}
-
-	args cmd;
-	cmd.argc = command.argv.size();
-	cmd.argv = (char**) malloc(sizeof(char*) * (cmd.argc+1));
-	cmd.number_pipe = command.number_pipe;
-
-	bool need_data, need_pipe = (command.pipe_to > 0);
-	size_t pid;
-	int p_num[2], data_pipe[2];
-	std::vector<int> data_list;
-
-	// record pipe descripter for the command behind to read
-	if (need_pipe) 
-	{
-		pipe(p_num);
-		cmd.p_num = p_num[0];
-	}
-
-	check_need_data(need_data, data_pipe, data_list);
-	
-	// fork
-	pid = fork();
-	if (pid < 0) 
-	{
-		char err[] = "failed to fork\n";
-		Writen(STDERR_FILENO, err, sizeof(err));
-		return 1;
-	}
-
-	// parent do
-	if (pid > 0)
-	{
-		if (need_pipe) close(p_num[1]);
-		if (need_data) close(data_pipe[0]);
-
-		// record memory allocate address
-		args_of_cmd.insert(std::pair<size_t, args> (pid, cmd));
-		
-		// update when new line
-		if (command.number_pipe) update_pipe_num_to();
-		
-		// store read id of pipe
-		if (command.number_pipe) pipe_num_to.insert(std::pair<size_t, int>(p_num[0], command.pipe_to-1));
-		else if (need_pipe) pipe_num_to.insert(std::pair<size_t, int>(p_num[0], 0));
-
-		// process data from multiple pipe
-		if (need_data && data_list.size() != 0) 
-		if (handle_data_from_multiple_pipe(data_pipe, data_list) == 0) return 1;
-		return 1;
-	}
-	//child do
-	else {
-		
-		// received data from other process
-		if (need_data) 
-		{
-			// parent will handle multiple pipes of data
-			if (data_list.size() != 0) 
-			{
-				close(data_pipe[1]);
-				for(auto id: data_list) close(id);
-			}
-
-			dup2(data_pipe[0], STDIN_FILENO);
-		}
-
-		// pipe stderr
-		if (command.err) dup2(p_num[1], STDERR_FILENO);
-
-		// pipe data to other process
-		if (need_pipe) {
-			close(p_num[0]);
-			dup2(p_num[1], STDOUT_FILENO);
-		}
-
-		// store data to a file
-		if (command.store_addr.size() > 0) {
-			if (set_output_to_file(command) == 0)
-			{
-				free(cmd.argv);
-				return 1;
-			}
-		}
-
-		// get the arguments ready
-		for (int j = 0; j < cmd.argc; j++){
-			cmd.argv[j] = (char*) malloc(sizeof(char) * command.argv[j].size()+1);
-			strcpy(cmd.argv[j], command.argv[j].c_str());
-		}
-		cmd.argv[cmd.argc] = new char;
-		cmd.argv[cmd.argc] = NULL;
-
-		// exec!!!!
-		if (execvp(cmd.argv[0], cmd.argv) < 0) {
-			char err[1024];
-			sprintf(err, "Unknown command: [%s].\n", cmd.argv[0]);
-			Writen(STDERR_FILENO, err, strlen(err));
-
-			// close pipe
-			if (need_data) close(data_pipe[0]);
-			if (need_pipe) close(p_num[1]);
-			return 1;
-		}
-	}
-
-	return 1;
 }
 
 void my_setenv(my_cmd &command)
