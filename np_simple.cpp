@@ -12,10 +12,23 @@ int main(int argc, char **argv)
 	pid_t				childpid;
 	sockaddr_in	        cliaddr, servaddr;
     int	                i, nready;
-
-    init();
     
-    if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
+    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    int reuse = 1;
+    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&reuse, sizeof(reuse));
+    
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family      = AF_INET;
+	servaddr.sin_addr.s_addr = htonl(0);//INADDR_ANY);
+	servaddr.sin_port        = htons(atoi(argv[1]));
+
+	if (bind(listenfd, (const sockaddr *) &servaddr, sizeof(servaddr)) < 0) 
+    {
+		printf("failed to bind\n");
+		return 0;
+	}
+
+    listen(listenfd, 1024);
 
     Client_info tmp_client;
     socklen_t clilen = sizeof(cliaddr);

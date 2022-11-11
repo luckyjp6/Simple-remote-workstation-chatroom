@@ -211,11 +211,6 @@ void parse_line(char *line)
 	}
 	C.push_back(tmp);
 	clear_tmp();
-
-	for (int i = 0; i < C.size(); i++)
-	{
-		printf("command: %s\n", C[i].argv[0].data());
-	}
 }
 
 void my_setenv(my_cmd &command)
