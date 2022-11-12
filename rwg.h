@@ -17,6 +17,9 @@ struct my_cmd{
 	std::string store_addr = "";
 	bool err = false;
 	bool number_pipe = false;
+	int user_pipe_to = -1; // user pipe to whom (id)
+	int user_pipe_from = -1; // user pipe from whom
+	std::string user_pipe_command = "";
 };
 
 struct args{
@@ -30,6 +33,8 @@ extern std::vector<my_cmd> C; // after read one line of commands, stores them he
 
 int execute_line(int index, char *line);
 void parse_line(char *line);
+int check_user_pipe_from(int from, int index);
+int check_user_pipe_to(int index, int to);
 int execute_command(int index, my_cmd &command);
 
 void my_setenv(my_cmd &command);

@@ -7,11 +7,17 @@ Client_info client[OPEN_MAX];
 int maxfd;
 fd_set afds, rfds;
 
+pipe_info user_pipe[NUM_USER][NUM_USER];
+
 void init() 
 {
     maxi = 0; maxfd = 0;
     for (auto &c:client) c.reset();
     FD_ZERO(&afds);
+
+    for (auto &a:user_pipe)
+        for(auto &b:a)
+            b.reset();
 
     setenv("PATH", "bin", 1);
 }
@@ -69,15 +75,15 @@ void handle_new_connection(int &connfd, const int listenfd)
         return;
     }
     
-    char msg[MSG_SIZE];
+    char msg[MSG_MAX];
     
     // show welcome message
-    memset(msg, '\0', MSG_SIZE);
+    memset(msg, '\0', MSG_MAX);
     sprintf(msg, "****************************************\n** Welcome to the information server. **\n****************************************\n");
     Writen(client[i].connfd, msg, strlen(msg));
 
     // broadcast message
-    memset(msg, '\0', MSG_SIZE);
+    memset(msg, '\0', MSG_MAX);
     sprintf(msg, "*** User '%s' entered from %s:%d. ***\n", client[i].name, inet_ntoa(cliaddr.sin_addr), cliaddr.sin_port);
     broadcast(msg);
 
@@ -101,11 +107,14 @@ void close_client(int index)
 
     close(connfd);
 
-    char msg[MSG_SIZE];
-    memset(msg, '\0', MSG_SIZE);
+    char msg[NAME_MAX + 20];
+    memset(msg, '\0', NAME_MAX + 20);
     sprintf(msg, "*** User '%s left. ***\n", client[index].name);
     
     client[index].reset();
+    FD_CLR(connfd, &afds);
+
+    for (auto &p:user_pipe[index]) p.reset();
 
     broadcast(msg);
 }

@@ -23,15 +23,17 @@
 #include <algorithm>
 
 #define OPEN_MAX 1024
-#define MSG_SIZE 550
-#define NAME_LENGTH 10
-#define SERVER_NAME "jp6jp6"
+#define MY_LINE_MAX 15000
+#define MSG_MAX 1024
+#define COMMAND_MAX 256
+#define MY_NAME_MAX 20
+#define NUM_USER 30
 
 struct Client_info 
 {
     int connfd;
     sockaddr_in addr;
-    char name[25];
+    char name[MY_NAME_MAX+5];
 
     void reset()
     {
@@ -46,11 +48,32 @@ struct Client_info
     }
 }; 
 
+struct pipe_info
+{
+    int pipe_num;
+    std::string command;
+
+    void reset()
+    {
+        pipe_num = -1;
+        command = "";
+    }
+
+    void set(int p, std::string c)
+    {
+        pipe_num = p;
+        command = c;
+    }
+};
+
+
 extern int maxi;
 extern Client_info client[OPEN_MAX];
 
 extern int maxfd;
 extern fd_set afds, rfds;
+
+extern pipe_info user_pipe[NUM_USER][NUM_USER];
 
 void init();
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);

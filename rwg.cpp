@@ -9,9 +9,11 @@ my_cmd tmp; // used in clear_tmp() and process_pipe_info()
 int execute_line(int index, char *line)
 {
     parse_line(line);
+
     for (int i = 0; i < C.size(); i++)
     {
         if (i % 50 == 0 && i != 0) conditional_wait();
+        
         if (execute_command(index, C[i]) < 0) return -1; // exit
     }
     return 0;
@@ -20,6 +22,7 @@ int execute_line(int index, char *line)
 int execute_command(int index, my_cmd &command)
 {
     int connfd = client[index].connfd;
+
     if (command.argv[0] == "exit") {
         C.clear();
         return -1;
@@ -74,15 +77,16 @@ int execute_command(int index, my_cmd &command)
         change_name(index, command.argv[1]);
         return 0;
     }
-printf("in\n");
+
     args cmd;
     cmd.argc = command.argv.size();
     cmd.argv = (char**) malloc(sizeof(char*) * (cmd.argc+1));
     cmd.number_pipe = command.number_pipe;
 
     bool need_data, need_pipe = (command.pipe_to > 0);
+    bool u_pipe_to = false, u_pipe_from = false;
     size_t pid;
-    int p_num[2], data_pipe[2];
+    int p_num[2], data_pipe[2], u_pipe[2];
     std::vector<int> data_list;
 
     // record pipe descripter for the command behind to read
@@ -90,6 +94,46 @@ printf("in\n");
     {
         pipe(p_num);
         cmd.p_num = p_num[0];
+    }
+    
+    // received data from user pipe
+    int from = command.user_pipe_from;
+    if (from >= 0)
+    {
+        if (check_user_pipe_from(from, index))
+        {
+            char msg[MY_LINE_MAX +50];
+            memset(msg, '\0', MY_LINE_MAX+50);
+            sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", client[from].name, from+1, client[index].name, index+1, user_pipe[from][index].command.data());
+            broadcast(msg);
+
+            u_pipe_from = true;
+        }
+        else 
+        {
+            close(user_pipe[from][index].pipe_num);
+            user_pipe[from][index].reset();
+        }
+    }
+    
+    // user pipe to other user
+    if (command.user_pipe_to >= 0)
+    {
+        int to = command.user_pipe_to;
+        if (check_user_pipe_to(index, to))
+        {
+            pipe(u_pipe);
+            std::string cmd_line = command.user_pipe_command;
+            cmd_line.erase(cmd_line.end()-1);
+            user_pipe[index][to].set(u_pipe[0], cmd_line);
+            
+            char msg[MY_LINE_MAX +50];
+            memset(msg, '\0', MY_LINE_MAX+50); 
+            sprintf(msg, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", client[index].name, index+1, cmd_line.data(), client[to].name, to+1);
+            broadcast(msg);
+
+            u_pipe_to = true;
+        }        
     }
 
     check_need_data(need_data, data_pipe, data_list);
@@ -109,6 +153,12 @@ printf("in\n");
     {
         if (need_pipe) close(p_num[1]);
         if (need_data) close(data_pipe[0]);
+        if (u_pipe_to) close(u_pipe[1]);
+        if (u_pipe_from) 
+        {
+            close(user_pipe[from][index].pipe_num);
+            user_pipe[from][index].reset();
+        }
 
         // record memory allocate address
         args_of_cmd.insert(std::pair<size_t, args> (pid, cmd));
@@ -141,7 +191,9 @@ printf("in\n");
             }
 
             dup2(data_pipe[0], STDIN_FILENO);
-        }else dup2(connfd, STDIN_FILENO);
+        }
+        else if (u_pipe_from) dup2(user_pipe[from][index].pipe_num, STDIN_FILENO);
+        else dup2(connfd, STDIN_FILENO);
 
         // pipe stderr
         if (command.err) dup2(p_num[1], STDERR_FILENO);
@@ -151,7 +203,13 @@ printf("in\n");
         if (need_pipe) {
             close(p_num[0]);
             dup2(p_num[1], STDOUT_FILENO);
-        }else dup2(connfd, STDOUT_FILENO);
+        }
+        else if (u_pipe_to) 
+        {
+            close(u_pipe[0]);
+            dup2(u_pipe[1], STDOUT_FILENO);
+        }
+        else dup2(connfd, STDOUT_FILENO);
 
         // store data to a file
         if (command.store_addr.size() > 0) {
@@ -187,6 +245,9 @@ printf("in\n");
 
 void parse_line(char *line)
 {
+    // user pipe
+    std::string s_line(line);
+    
 	bool storage_flg = false;
 	const char *new_args = " \n\r";
 	char *command = strtok(line, new_args);
@@ -242,7 +303,7 @@ void parse_line(char *line)
 			C.push_back(tmp);
 			clear_tmp();
 		}
-		else if(command[0] == '|' || command[0] == '!') 
+		else if (command[0] == '|' || command[0] == '!') 
 		{
 			process_pipe_info(command);
 			
@@ -250,7 +311,21 @@ void parse_line(char *line)
 			C.push_back(tmp);
 			clear_tmp();
 		}
-		else if(s == ">") storage_flg = true;
+        else if (s[0] == '<')
+        {
+            s.erase(0, 1);
+            tmp.user_pipe_from = atoi(s.data())-1;
+        }
+		else if (s[0] == '>') 
+        {
+            if (s.size() == 1) storage_flg = true;
+            else 
+            {
+                s.erase(0, 1);
+                tmp.user_pipe_to = atoi(s.data())-1;
+                tmp.user_pipe_command = s_line;
+            }
+        }
 		else tmp.argv.push_back(s);
 
 		command = strtok(NULL, new_args);
@@ -258,12 +333,62 @@ void parse_line(char *line)
 	C.push_back(tmp);
 	clear_tmp();
 
-	for (auto command: C)
-	{
-        for (auto arg: command.argv)
-		    printf("%s ", arg.data());
-        printf("\n-----------------------\n");
-	}
+	// for (auto command: C)
+	// {
+    //     for (auto arg: command.argv)
+	// 	    printf("%s ", arg.data());
+    //     printf("\n-----------------------\n");
+	// }
+}
+
+int check_user_pipe_from(int from, int index)
+{
+    int connfd = client[index].connfd;
+
+    if (client[from].connfd < 0)
+    {
+        char msg[MY_LINE_MAX +50];
+        memset(msg, '\0', MY_LINE_MAX+50);  
+        sprintf(msg, "*** Error: user #%d does not exist yet. ***\n", from+1);
+        Writen(connfd, msg, strlen(msg));
+
+        return 0;
+    }
+    if (user_pipe[from][index].pipe_num < 0)
+    {
+        char msg[MY_LINE_MAX +50];
+        memset(msg, '\0', MY_LINE_MAX+50);
+        sprintf(msg, "*** Error: the pipe #%d->#%d does not exist yet. ***\n", from+1, index+1);
+        Writen(connfd, msg, strlen(msg));
+
+        return 0;
+    }
+
+    return 1;
+}
+
+int check_user_pipe_to(int index, int to)
+{
+    int connfd = client[index].connfd;
+    
+    if (client[to].connfd < 0)
+    {
+        char msg[MY_LINE_MAX +50];
+        memset(msg, '\0', MY_LINE_MAX+50); 
+        sprintf(msg, "*** Error: user #%d does not exist yet. ***\n", to+1);
+        Writen(connfd, msg, strlen(msg));
+        return 0;
+    }
+    if (user_pipe[index][to].pipe_num > 0)
+    {
+        char msg[MY_LINE_MAX +50];
+        memset(msg, '\0', MY_LINE_MAX+50); 
+        sprintf(msg, "*** Error: the pipe #%d->#%d already exists. ***\n", index+1, to+1);
+        Writen(connfd, msg, strlen(msg));
+        return 0;
+    }
+
+    return 1;
 }
 
 void my_setenv(my_cmd &command)
@@ -288,15 +413,15 @@ void my_printenv(my_cmd &command)
 void print_all_user(int index)
 {
     int connfd = client[index].connfd;
-    char msg[MSG_SIZE];
+    char msg[MSG_MAX];
 
-    memset(msg, '\0', MSG_SIZE);
+    memset(msg, '\0', MSG_MAX);
     sprintf(msg, "<ID\t<nickname>\t<IP:port>\t<indicate me>\n");
     Writen(connfd, msg, strlen(msg));
     for (int i = 0; i < maxi; i++)
     {
         if (client[i].connfd < 0) continue;
-        memset(msg, '\0', MSG_SIZE);
+        memset(msg, '\0', MSG_MAX);
         sprintf(msg, "%d\t%s\t%s:%d\t%s\n", i+1, client[i].name, inet_ntoa(client[i].addr.sin_addr), client[i].addr.sin_port, (i == index)?" <-me":"");
         Writen(connfd, msg, strlen(msg));
     }
@@ -304,8 +429,8 @@ void print_all_user(int index)
 
 void tell_msg(int from, int to, std::string msg)
 {
-    char snd[MSG_SIZE];
-    memset(snd, '\0', MSG_SIZE);
+    char snd[MSG_MAX];
+    memset(snd, '\0', MSG_MAX);
 
     to -= 1;
 
@@ -322,16 +447,16 @@ void tell_msg(int from, int to, std::string msg)
 
 void yell_msg(int from, std::string msg)
 {
-    char snd[MSG_SIZE];
-    memset(snd, '\0', MSG_SIZE);
+    char snd[MSG_MAX];
+    memset(snd, '\0', MSG_MAX);
     sprintf(snd, "*** %s yelled ***: <%s>\n", client[from].name, msg.data());
     broadcast(snd);
 }
 
 void change_name(int index, std::string name)
 {
-    char snd[MSG_SIZE];
-    memset(snd, '\0', MSG_SIZE);
+    char snd[MSG_MAX];
+    memset(snd, '\0', MSG_MAX);
 
     int i;
     for (i = 0; i < maxi; i++)
@@ -346,7 +471,6 @@ void change_name(int index, std::string name)
     }
 
     strcpy(client[index].name, name.data());
-    // printf("client[%d] name: %s\n", i, client[i].name);
     sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", inet_ntoa(client[index].addr.sin_addr), client[index].addr.sin_port, client[index].name);
     broadcast(snd);
 }
@@ -452,6 +576,9 @@ void clear_tmp() {
 	tmp.store_addr = "";
 	tmp.err = false;
 	tmp.number_pipe = false;
+    tmp.user_pipe_to = -1;
+    tmp.user_pipe_from = -1;
+    tmp.user_pipe_command = "";
 }
 
 void process_pipe_info(std::string s) {

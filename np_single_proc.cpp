@@ -37,15 +37,15 @@ int main(int argc, char **argv)
 
         /* check all clients */
 		int sockfd, n;
-        char buf[MSG_SIZE];
+        char buf[LINE_MAX];
         for (i = 0; i < maxi && nready > 0; i++) 
         {
             if (!FD_ISSET(client[i].connfd, &rfds)) continue;
             
             /* read input*/
-            memset(buf, '\0', MSG_SIZE);
+            memset(buf, '\0', LINE_MAX);
 
-            if ( (n = read(client[i].connfd, buf, MSG_SIZE)) < 0) 
+            if ( (n = read(client[i].connfd, buf, LINE_MAX)) < 0) 
             { 
                 if (errno == ECONNRESET) close_client(i); /* connection reset by client */
                 else err_sys("read error");
