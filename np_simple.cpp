@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "rwg.h"
 
 int main(int argc, char **argv)
 {
@@ -8,68 +9,61 @@ int main(int argc, char **argv)
         return -1;
     }
     
-    int					listenfd, connfd;
+    int					connfd, listenfd;
 	pid_t				childpid;
-	sockaddr_in	        cliaddr, servaddr;
-    int	                i, nready;
+	sockaddr_in	        servaddr;
+    int	                nready;
     
-    listenfd = socket(AF_INET, SOCK_STREAM, 0);
-    int reuse = 1;
-    setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&reuse, sizeof(reuse));
-    
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family      = AF_INET;
-	servaddr.sin_addr.s_addr = htonl(0);//INADDR_ANY);
-	servaddr.sin_port        = htons(atoi(argv[1]));
+    init();
+    setenv("PATH", "bin:.", 1);
 
-	if (bind(listenfd, (const sockaddr *) &servaddr, sizeof(servaddr)) < 0) 
+    if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
+
+    for( ; ; )
     {
-		printf("failed to bind\n");
-		return 0;
-	}
+        handle_new_connection(connfd, listenfd, false);
+        // FD_CLR(listenfd, &afds);
 
-    listen(listenfd, 1024);
+        int n;
+        char buf[MY_LINE_MAX];
 
-    Client_info tmp_client;
-    socklen_t clilen = sizeof(cliaddr);
-
-    while(true)
-    {
-        connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);
-	
-        int pid = fork();
-        if (pid < 0) 
+        for ( ; ; )
         {
-            printf("Fork error\n");
-            return -1;
-        }
-        if (pid == 0) 
-        {
-            dup2(connfd, STDIN_FILENO);
-            dup2(connfd, STDOUT_FILENO);
-            dup2(connfd, STDERR_FILENO);
+            memset(buf, '\0', MY_LINE_MAX);
             
-            char **npshell = (char**) malloc(sizeof(char*));
-            npshell[0] = new char;
-            strcpy(npshell[0], "npshell");
-            setenv("PATH", ".", 1);
-            if (execvp("npshell", npshell) < 0)
+            if ( (n = read(connfd, buf, MY_LINE_MAX)) < 0) 
+            { 
+                if (errno == ECONNRESET) err_sys("read error");
+                close_client(0, false); /* connection reset by client */
+                break;
+            } 
+            else if (n == 0) 
             {
-                char err[1024];
-                sprintf(err, "Fail to exec\n");
-                write(STDERR_FILENO, err, strlen(err));
-
-                close(connfd);
-                return -1;
+                close_client(0, false);
+                break; /* connection closed by client */
             }
-        }
-        else 
-        {   
-            close(connfd);
-            wait(NULL);
+            else if (n == 1)
+            {
+                write(connfd, "% ", sizeof("% "));
+            }
+            else 
+            {
+                // printf("%d\n", n);
+                /* read command */
+                int status;
+                if ((status = execute_line(0, buf)) < 0) {
+                    if (status == -2) return 0;
+                    wait_all_children();
+                    close_client(0, false);
+                    break; // exit
+                }
+                
+                char pa[] = "% ";
+                Writen(connfd, pa, strlen(pa));
+            }
         }
     }
 
-    
+    close(listenfd);
     return 0;
 }

@@ -19,22 +19,31 @@ void init()
         for(auto &b:a)
             b.reset();
 
-    setenv("PATH", "bin", 1);
+    // setenv("PATH", "bin", 1);
 }
 
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
 {
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     int reuse = 1;
+    int buf_size = MY_LINE_MAX;
+    setsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&reuse, sizeof(reuse));
-    
+
+    socklen_t length; 
+    int ss = 0;
+    length = sizeof(ss);
+    if (getsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, &ss, &length) < 0) printf("failed\n");
+    printf("rcv buf size: %d\n", ss);
+
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family      = AF_INET;
 	servaddr.sin_addr.s_addr = htonl(0);//INADDR_ANY);
 	servaddr.sin_port        = htons(atoi(port));
 
-	if (bind(listenfd, (const sockaddr *) &servaddr, sizeof(servaddr)) < 0) 
+	while (bind(listenfd, (const sockaddr *) &servaddr, sizeof(servaddr)) < 0) 
     {
+        if (errno == EINTR) continue;
 		printf("failed to bind\n");
 		return 0;
 	}
@@ -47,12 +56,12 @@ int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
     return 1;
 }
 
-void handle_new_connection(int &connfd, const int listenfd)
+void handle_new_connection(int &connfd, const int listenfd, bool welcome)
 {
     sockaddr_in cliaddr;
     socklen_t clilen = sizeof(cliaddr);
     
-    connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);
+    connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);    
 
     // save descriptor
     int i;
@@ -62,8 +71,11 @@ void handle_new_connection(int &connfd, const int listenfd)
         {
             client[i].set(connfd, cliaddr);
             FD_SET(connfd, &afds);
-            if (i >= maxi) maxi = i+1;
-            if (connfd > maxfd) maxfd = connfd;
+            if (welcome)
+            {
+                if (i >= maxi) maxi = i+1;
+                if (connfd > maxfd) maxfd = connfd;
+            }
 
             break;
         }
@@ -75,20 +87,24 @@ void handle_new_connection(int &connfd, const int listenfd)
         return;
     }
     
-    char msg[MSG_MAX];
+    if (welcome)
+    {
+        char msg[MSG_MAX];
     
-    // show welcome message
-    memset(msg, '\0', MSG_MAX);
-    sprintf(msg, "****************************************\n** Welcome to the information server. **\n****************************************\n");
-    Writen(client[i].connfd, msg, strlen(msg));
+        // show welcome message
+        memset(msg, '\0', MSG_MAX);
+        sprintf(msg, "****************************************\n** Welcome to the information server. **\n****************************************\n");
+        Writen(client[i].connfd, msg, strlen(msg));
 
-    // broadcast message
-    memset(msg, '\0', MSG_MAX);
-    sprintf(msg, "*** User '%s' entered from %s:%d. ***\n", client[i].name, inet_ntoa(cliaddr.sin_addr), cliaddr.sin_port);
-    broadcast(msg);
+        // broadcast message
+        memset(msg, '\0', MSG_MAX);
+        sprintf(msg, "*** User '%s' entered from %s:%d. ***\n", client[i].name, inet_ntoa(cliaddr.sin_addr), cliaddr.sin_port);
+        broadcast(msg);
+    }
+    
 
     char pa[] = "% ";
-    Writen(connfd, pa, sizeof(pa));
+    Writen(connfd, pa, strlen(pa));
 }
 
 void broadcast(char *msg)
@@ -101,20 +117,30 @@ void broadcast(char *msg)
     }
 }
 
-void close_client(int index) 
+void close_client(int index, bool goodbye) 
 {
     int connfd = client[index].connfd;
-
-    close(connfd);
-
-    char msg[NAME_MAX + 20];
-    memset(msg, '\0', NAME_MAX + 20);
-    sprintf(msg, "*** User '%s left. ***\n", client[index].name);
     
-    client[index].reset();
+    char msg[NAME_MAX + 20];
+    close(connfd);
+    memset(msg, '\0', NAME_MAX + 20);
+    sprintf(msg, "*** User '%s' left. ***\n", client[index].name);
+    
     FD_CLR(connfd, &afds);
-
-    for (auto &p:user_pipe[index]) p.reset();
-
-    broadcast(msg);
+    client[index].reset();
+    
+    if (goodbye)
+    {        
+        for (int i = 0; i < NUM_USER; i++) 
+        {
+            if (user_pipe[index][i].pipe_num > 0) close(user_pipe[index][i].pipe_num);
+            user_pipe[index][i].reset();
+        }
+        for (int i = 0; i < NUM_USER; i++) 
+        {
+            if (user_pipe[i][index].pipe_num > 0) close(user_pipe[i][index].pipe_num);
+            user_pipe[i][index].reset();
+        }
+        broadcast(msg);
+    }
 }

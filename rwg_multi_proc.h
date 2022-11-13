@@ -1,5 +1,5 @@
-#ifndef RWG_H
-#define RWG_H
+#ifndef RWG_MULTI_PROC_H
+#define RWG_MULTI_PROC_H
 
 #include <iostream>
 #include <stdlib.h>
