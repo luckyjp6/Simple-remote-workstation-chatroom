@@ -18,8 +18,6 @@ void init()
     for (auto &a:user_pipe)
         for(auto &b:a)
             b.reset();
-
-    // setenv("PATH", "bin", 1);
 }
 
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)

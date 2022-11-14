@@ -1,5 +1,9 @@
-#include "functions.h"
-#include "rwg.h"
+#include "functions_multi_proc.h"
+
+void sig_chld(int signo);
+void sig_int(int signo);
+
+int maxi = 0;
 
 int main(int argc, char **argv)
 {
@@ -15,74 +19,111 @@ int main(int argc, char **argv)
     int	                i, nready;
 
     init();
-    setenv("PATH", "bin:.", 1);
+    setenv("PATH", ".", 1);
+    signal(SIGCHLD, sig_chld);
+    signal(SIGINT,  sig_int);
 
     if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
 
 	for ( ; ; ) 
     {
-        rfds = afds;
-        if ((nready = select(maxfd+1, &rfds, NULL, NULL, NULL)) < 0)
+        int new_id = handle_new_connection(connfd, listenfd);
+        if (new_id > maxi) maxi = new_id;
+        
+        printf("new client!!\n");
+
+        char **cli_argv = (char**) malloc(sizeof(char*)*2);
+        int pid = fork();
+
+        if (pid == 0) 
         {
-            printf("select: %s\n", strerror(errno));
-            return -1;
-        }
+            close(listenfd);
+            dup2(connfd, STDIN_FILENO);
+            dup2(connfd, STDOUT_FILENO);
+            dup2(connfd, STDERR_FILENO);
 
-        // new client
-        if (FD_ISSET(listenfd, &rfds)) 
-        {
-            handle_new_connection(connfd, listenfd, true);
-            printf("new client!!!!!!!!!!!!!!!\n");
-            nready--;
-        }
+            char rwg[] = "rwg_multi_proc";
+            cli_argv[0] = (char*) malloc(sizeof(char) * strlen(rwg)+1);
+            strcpy(cli_argv[0], rwg);
 
-        /* check all clients */
-		int sockfd, n;
-        char buf[MY_LINE_MAX];
-        for (i = 0; i < maxi && nready > 0; i++) 
-        {
-            if (!FD_ISSET(client[i].connfd, &rfds)) continue;
-            setenv("PATH", client[i].env["PATH"].data(), 1);
+            char char_id[4];
+            sprintf(char_id, "%d", new_id);
+            cli_argv[1] = (char*) malloc(sizeof(char) * sizeof(int)+1);
+            strcpy(cli_argv[1], char_id);
 
-            /* read input*/
-            memset(buf, '\0', MY_LINE_MAX);
-
-            if ( (n = read(client[i].connfd, buf, MY_LINE_MAX)) < 0) 
-            { 
-                if (errno != ECONNRESET) err_sys("read error");
-                close_client(i, true); /* connection reset by client */
-            } 
-            else if (n == 0) close_client(i, true); /* connection closed by client */
-            else if (n == 1)
+            if (execvp(cli_argv[0], cli_argv) < 0)
             {
-                write(connfd, "% ", strlen("% ")); fflush(stdout);
+                char err[1024];
+                sprintf(err, "Unknown command: [%s].\n", cli_argv[0]);
+                write(STDERR_FILENO, err, strlen(err));
+                return -1;
             }
-            else 
-            {
-                int status;
-                /* read command */
-                if ((status = execute_line(i, buf)) < 0) 
-                {
-                    // exit
-                    if (status == -1) {
-                        close_client(i, true);
-                        continue; 
-                    }
-                    // children
-                    else 
-                    {
-                        close_client(i, false);
-                        return 0; 
-                    }
-                }
-                write(client[i].connfd, "% ", strlen("% ")); fflush(stdout);
-            }
+        }
+        else
+        {
+            // kill(pid, SIGIO);
+            cp[new_id].set(connfd, pid, cli_argv);
+            printf("server received pid: %d\n", pid);
+            write_user_info(new_id);
+            client_pid c(new_id);
+            read_user_info(c);
 
-            --nready;
-            
+            // broadcast message
+            char msg[MSG_MAX];
+            memset(msg, '\0', MSG_MAX);
+            sprintf(msg, "*** User '(no name)' entered from %s:%d. ***\n", cp[new_id].addr, cp[new_id].port);
+            // broadcast(msg);close(connfd);
         }
 	}
-
+    // while(cp.size() > 0) sig_chld(0);
     /* parent closes connected socket */
     close(listenfd);
+
+    return 0;
+}
+
+void sig_chld(int signo)
+{
+printf("in sig chld\n");
+	int	pid, stat;
+
+	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0){
+		for (int i = 0; i <= maxi; i++) 
+        {
+            if (pid == cp[i].pid)
+            {
+                printf("goodbye\n");
+                free(cp[i].argv);
+                cp[i].reset(i);
+                break;
+            }
+        }
+    }
+
+	return;
+}
+
+void sig_int(int signo)
+{
+    /* clear share memory */
+    for (int i = 0; i < 2; i++) 
+        if (shmctl(shm_id[i], IPC_RMID, 0) < 0) perror("shmctl rm id fail");
+
+    /* kill all process */
+    bool remain = true;
+    // while (remain)
+    {
+        remain = false;
+        for (int i = 0; i < maxi; i++)
+        {
+            if (cp[i].pid > 0) 
+            {
+                remain = true;
+                kill(cp[i].pid, SIGINT);
+                sig_chld(0);
+                break;
+            }
+        }
+    }
+    exit(1);
 }

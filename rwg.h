@@ -1,3 +1,4 @@
+#ifndef RWG_MULTI_PROC_H
 #ifndef RWG_H
 #define RWG_H
 
@@ -63,4 +64,5 @@ void update_pipe_num_to();
 void clear_tmp();
 void process_pipe_info(std::string s); // process input command's pipe info
 
+#endif
 #endif

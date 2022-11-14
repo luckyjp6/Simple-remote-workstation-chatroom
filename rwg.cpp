@@ -524,7 +524,6 @@ void change_name(int index, std::string name)
 
 int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
 {
-printf("in handle\n");
 	// fork a child to process
 	int pid = fork();
     
@@ -535,7 +534,6 @@ printf("in handle\n");
 	}
 
 	if (pid == 0) {
-printf("reading\n");
 		// read data from each pipe (FIFO)
 		for (auto id: data_list) {
 			char read_data[1024];

@@ -16,6 +16,7 @@ int main(int argc, char **argv)
     
     init();
     setenv("PATH", "bin:.", 1);
+    signal(SIGCHLD, sig_chld);
 
     if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
 

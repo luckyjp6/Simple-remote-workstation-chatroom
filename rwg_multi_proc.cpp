@@ -1,23 +1,62 @@
-#include "functions.h"
-#include "rwg.h"
+#include "functions_multi_proc.h"
+#include "rwg_multi_proc.h"
 
 std::vector<my_cmd> C; // after read one line of commands, stores them here
-std::map< size_t, args> args_of_cmd; // pid, args
-int client_index;
+std::map< size_t, args > args_of_cmd; // pid, args
 my_cmd tmp; // used in clear_tmp() and process_pipe_info()
+std::vector<pnt> pipe_num_to; // pipe_num, counter   
 
-int execute_line(int input_index, char *line)
+client_pid me;
+int FIFO_open[2][30];
+
+int main(int argc, char **argv)
+{
+    setenv("PATH", "bin:.", 1);
+    signal(SIGCHLD, sig_chld);
+    signal(SIGINT, sig_term);
+
+    me = cp[atoi(argv[1])];
+    for (int i = 0; i < 2; i++)
+    {
+        shm_key[i] = (key_t)(1234+i);
+        if ((shm_id[i] = shmget(shm_key[i], SHM_SIZE*OPEN_MAX, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
+    } 
+
+    while (true)
+    {
+        if (std::cin.eof()) break;
+
+        printf("%% "); fflush(stdout);
+
+        char buf[MY_LINE_MAX];
+        int n = read(STDIN_FILENO, buf, MY_LINE_MAX);
+
+		if (n < 0) {
+			err_sys("failed to read\n");
+			return -1;
+		}
+		else if (n <= 1) continue; // blank line
+
+        int status;
+        if ((status = execute_line(buf)) == -1) break;
+        else if (status == -2) return 0;
+    }
+
+    wait_all_children();
+    sig_term(0);
+
+    return 0;
+}
+
+int execute_line(char *line)
 {
     parse_line(line);
-    client_index = input_index;
+
     int status = 1;
     for (int i = 0; i < C.size(); i++)
     {
         if (i % 50 == 0 && i != 0) conditional_wait();
-        
-        
-        if ((status = execute_command(C[i])) < 0) return status; // exit
-        
+        if ((status = execute_command(C[i])) < 0) return -1; // exit        
     }
     if (status == 0) update_pipe_num_to();
     conditional_wait();
@@ -28,25 +67,23 @@ int execute_line(int input_index, char *line)
 
 int execute_command(my_cmd &command)
 {
-    int connfd = client[client_index].connfd;
-
     if (command.argv[0] == "exit") {
         C.clear();
         return -1;
     }
     if (command.argv[0] == "setenv") 
     {
-        my_setenv(client_index, command);
+        my_setenv(command);
         return 0;
     }
     if (command.argv[0] == "printenv") 
     {
-        my_printenv(connfd, command);
+        my_printenv(command);
         return 0;
     }
     if (command.argv[0] == "who")
     {
-        print_all_user(client_index);
+        print_all_user();
         return 0;
     }
     if (command.argv[0] == "tell")
@@ -54,12 +91,12 @@ int execute_command(my_cmd &command)
         if (command.argv.size() < 3) 
         {
             char err[] = "Usage: tell <to whom> <msg>\n";
-            Writen(connfd, err, strlen(err));
+            Writen(STDOUT_FILENO, err, strlen(err));
             return 0;
         }
         // std::string msg = "";
         // for (int i = 2; i < command.argv.size(); i++) msg += command.argv[i];
-        tell_msg(client_index, atoi(command.argv[1].data()), command.argv[2]);
+        tell_msg(atoi(command.argv[1].data()), command.argv[2]);
         return 0;
     }
     if (command.argv[0] == "yell")
@@ -67,10 +104,10 @@ int execute_command(my_cmd &command)
         if (command.argv.size() < 2) 
         {
             char err[] = "Usage: yel <msg>\n";
-            Writen(connfd, err, strlen(err));
+            Writen(STDOUT_FILENO, err, strlen(err));
             return 0;
         }
-        yell_msg(client_index, command.argv[1]);
+        yell_msg(command.argv[1]);
         return 0;
     }
     if (command.argv[0] == "name")
@@ -78,10 +115,10 @@ int execute_command(my_cmd &command)
         if (command.argv.size() < 2) 
         {
             char err[] = "Usage: name <name>\n";
-            Writen(connfd, err, strlen(err));
+            Writen(STDOUT_FILENO, err, strlen(err));
             return 0;
         }
-        change_name(client_index, command.argv[1]);
+        change_name(command.argv[1]);
         return 0;
     }
 
@@ -92,10 +129,9 @@ int execute_command(my_cmd &command)
 
     bool need_data, need_pipe = (command.pipe_to > 0);
     bool u_pipe_to = false, u_pipe_from = false;
-    bool u_pipe_err_in = false, u_pipe_err_out = false;
-    int err_in, err_out;
+    int u_to, u_from;
     size_t pid;
-    int p_num[2], data_pipe[2], u_pipe[2], u_to;
+    int p_num[2], data_pipe[2], u_pipe[2];
     std::vector<int> data_list;
 
     // record pipe descripter for the command behind to read
@@ -109,50 +145,53 @@ int execute_command(my_cmd &command)
     int from = command.user_pipe_from;
     if (from >= 0)
     {
-        if (check_user_pipe_from(from, client_index) < 0)
-        {
-            close(user_pipe[from][client_index].pipe_num);
-            u_pipe_err_in = true;
-            err_in = open("/dev/null", O_RDONLY);
-        }
+        u_pipe_from = true;
+
+        if (check_user_pipe_from(from, u_from) < 0) u_from = open("/dev/null", O_RDONLY);
         else 
         {
-            char msg[MY_LINE_MAX +50];
-            memset(msg, '\0', MY_LINE_MAX+50);
             std::string cmd_line = command.user_pipe_command;
             cmd_line.erase(cmd_line.end()-1);
-            sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", client[client_index].name, client_index+1, client[from].name, from+1, cmd_line.data());
+            
+            char msg[MY_LINE_MAX +50];
+            memset(msg, '\0', MY_LINE_MAX+50);
+
+            client_pid c(from);
+            read_user_info(c);
+
+            sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", me.name, me.id+1, c.name, from+1, cmd_line.data());
             broadcast(msg);
 
-            u_pipe_from = true;
-            u_to = user_pipe[from][client_index].pipe_num;
+            cmd.from = from;
         }
-        user_pipe[from][client_index].reset();
+
+        
     }
 
     // user pipe to other user
-    if (command.user_pipe_to >= 0)
+    
+    int to = command.user_pipe_to;
+    if (to >= 0)
     {
-        int to = command.user_pipe_to;
-        if (check_user_pipe_to(client_index, to) < 0)
-        {
-            u_pipe_err_out = true;
-            err_out = open("/dev/null", O_WRONLY);
-        }
+        u_pipe_to = true;
+
+        if (check_user_pipe_to(to, u_to) < 0) u_to = open("/dev/null", O_WRONLY);
         else 
         {
-            pipe(u_pipe);
             std::string cmd_line = command.user_pipe_command;
             cmd_line.erase(cmd_line.end()-1);
-            user_pipe[client_index][to].set(u_pipe[0], cmd_line);
-            
+
             char msg[MY_LINE_MAX +50];
             memset(msg, '\0', MY_LINE_MAX+50); 
-            sprintf(msg, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", client[client_index].name, client_index+1, cmd_line.data(), client[to].name, to+1);
+
+            client_pid c(from);
+            read_user_info(c);
+
+            sprintf(msg, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", me.name, me.id+1, cmd_line.data(), c.name, c.id+1);
             broadcast(msg);
 
-            u_pipe_to = true;
-        }        
+            cmd.to = to;
+        }
     }
 
     check_need_data(need_data, data_pipe, data_list);
@@ -172,10 +211,9 @@ int execute_command(my_cmd &command)
     {
         if (need_pipe) close(p_num[1]);
         if (need_data) close(data_pipe[0]);
-        if (u_pipe_to) close(u_pipe[1]);
-        if (u_pipe_from)  close(user_pipe[from][client_index].pipe_num);
-        // if (u_pipe_err_in) close(err_in);
-        // if (u_pipe_err_out) close(err_out);
+
+        if (u_pipe_to) close(u_to);
+        if (u_pipe_from) close(u_from);
 
         // record memory allocate address
         args_of_cmd.insert(std::pair<size_t, args> (pid, cmd));
@@ -187,12 +225,12 @@ int execute_command(my_cmd &command)
         pnt tmp;
         if (command.number_pipe) {
             tmp.set(p_num[0], command.pipe_to-1);
-            client[client_index].pipe_num_to.push_back(tmp);
+            pipe_num_to.push_back(tmp);
         }
         else if (need_pipe) 
         {
             tmp.set(p_num[0], 0);
-            client[client_index].pipe_num_to.push_back(tmp);
+            pipe_num_to.push_back(tmp);
         }
 
         int status;
@@ -206,7 +244,6 @@ int execute_command(my_cmd &command)
     }
     //child do
     else {
-        int connfd = client[client_index].connfd;
 
         // received data from other process
         if (need_data) 
@@ -221,12 +258,9 @@ int execute_command(my_cmd &command)
             dup2(data_pipe[0], STDIN_FILENO);
         }
         else if (u_pipe_from) dup2(u_to, STDIN_FILENO);
-        else if (u_pipe_err_in) dup2(err_in, STDIN_FILENO);
-        else dup2(connfd, STDIN_FILENO);
 
         // pipe stderr
         if (command.err) dup2(p_num[1], STDERR_FILENO);
-        else dup2(connfd, STDERR_FILENO);
 
         // pipe data to other process
         if (need_pipe) {
@@ -238,8 +272,6 @@ int execute_command(my_cmd &command)
             close(u_pipe[0]);
             dup2(u_pipe[1], STDOUT_FILENO);
         }
-        else if (u_pipe_err_out) dup2(err_out, STDOUT_FILENO);
-        else dup2(connfd, STDOUT_FILENO);
 
         // store data to a file
         if (command.store_addr.size() > 0) {
@@ -265,14 +297,9 @@ int execute_command(my_cmd &command)
             Writen(STDERR_FILENO, err, strlen(err));
 
             // close pipe
-            // if (need_data) close(data_pipe[0]);
-            // if (need_pipe) close(p_num[1]);
-            // if (u_pipe_to) close(u_pipe[1]);
-            // if (u_pipe_from) 
-            // {
-            //     close(user_pipe[from][client_index].pipe_num);
-            //     user_pipe[from][client_index].reset();
-            // }
+            if (need_data) close(data_pipe[0]);
+            if (need_pipe) close(p_num[1]);
+
             return -2;
         }
     }
@@ -372,80 +399,140 @@ void parse_line(char *line)
         C.push_back(tmp);
     	clear_tmp();
     }
-	// for (auto command: C)
-	// {
-    //     for (auto arg: command.argv)
-	// 	    printf("%s ", arg.data());
-    //     printf("\n-----------------------\n");
-	// }
 }
 
-int check_user_pipe_from(int from, int index)
+int check_user_pipe_from(int from, int &u_from)
 {
-    int connfd = client[client_index].connfd;
+    client_pid f(from);
+    read_user_info(f);
 
-    if (client[from].connfd < 0)
+    char FIFO_name[10];
+    sprintf(FIFO_name, "%d_%d", from, me.id);
+
+    /*check if user with id 'from' exist*/
+    if (f.connfd < 0) 
     {
         char msg[MY_LINE_MAX +50];
         memset(msg, '\0', MY_LINE_MAX+50);  
         sprintf(msg, "*** Error: user #%d does not exist yet. ***\n", from+1);
-        Writen(connfd, msg, strlen(msg));
+        Writen(STDOUT_FILENO, msg, strlen(msg));
+        
+        if (FIFO_open[0][from] > 0) FIFO_open[0][from] = -1;
+        if (FIFO_open[1][from] > 0) FIFO_open[1][from] = -1;
 
         return -1;
     }
-    if (user_pipe[from][client_index].pipe_num < 0)
+
+    /*check if user pipe 'from->me' exist, maybe store the information in share memory*/
+    if (FIFO_open[0][from] = open(FIFO_name, O_RDONLY) < 0)
     {
-        char msg[MY_LINE_MAX +50];
-        memset(msg, '\0', MY_LINE_MAX+50);
-        sprintf(msg, "*** Error: the pipe #%d->#%d does not exist yet. ***\n", from+1, index+1);
-        Writen(connfd, msg, strlen(msg));
-
+        if (errno == EACCES)
+        {
+            char msg[MY_LINE_MAX +50];
+            memset(msg, '\0', MY_LINE_MAX+50);
+            sprintf(msg, "*** Error: the pipe #%d->#%d does not exist yet. ***\n", from+1, me.id+1);
+            Writen(STDOUT_FILENO, msg, strlen(msg));
+            return -1;
+        }
+        char err[MSG_MAX];
+        sprintf(err, "can't open read fifo: %s\n", FIFO_name);
+        write(STDOUT_FILENO, err, strlen(err));
         return -1;
     }
+    // if (FIFO_open[0][from] < 0)
+    // {
+    //     char msg[MY_LINE_MAX +50];
+    //     memset(msg, '\0', MY_LINE_MAX+50);
+    //     sprintf(msg, "*** Error: the pipe #%d->#%d does not exist yet. ***\n", from+1, me.id+1);
+    //     Writen(STDOUT_FILENO, msg, strlen(msg));
+
+    //     return -1;
+    // }    
 
     return 0;
 }
 
-int check_user_pipe_to(int index, int to)
+int check_user_pipe_to(int to, int &u_to)
 {
-    int connfd = client[client_index].connfd;
-    
-    if (client[to].connfd < 0)
+    /*check if user with id 'to' exist*/
+    client_pid t(to);
+    read_user_info(t);
+
+    char FIFO_name[10];
+    sprintf(FIFO_name, "%d_%d", me.id, to);
+    if (t.connfd < 0)
     {
         char msg[MY_LINE_MAX +50];
         memset(msg, '\0', MY_LINE_MAX+50); 
         sprintf(msg, "*** Error: user #%d does not exist yet. ***\n", to+1);
-        Writen(connfd, msg, strlen(msg));
+        Writen(STDOUT_FILENO, msg, strlen(msg));
         return -1;
-    }
-    if (user_pipe[client_index][to].pipe_num > 0)
-    {
-        char msg[MY_LINE_MAX +50];
-        memset(msg, '\0', MY_LINE_MAX+50); 
-        sprintf(msg, "*** Error: the pipe #%d->#%d already exists. ***\n", index+1, to+1);
-        Writen(connfd, msg, strlen(msg));
-        return -1;
+
+        if (FIFO_open[0][t.id] > 0) FIFO_open[0][t.id] = -1;
+        if (FIFO_open[1][t.id] > 0) FIFO_open[1][t.id] = -1;
     }
 
+    // if (FIFO_open[1][t.id] > 0)
+    // {
+    //     char msg[MY_LINE_MAX +50];
+    //     memset(msg, '\0', MY_LINE_MAX+50); 
+    //     sprintf(msg, "*** Error: the pipe #%d->#%d already exists. ***\n", me.id+1, to+1);
+    //     Writen(STDOUT_FILENO, msg, strlen(msg));
+    //     return -1;
+    // }
+
+    /* open FIFO */
+    // if ( (mknod(FIFO_name, S_IFIFO, 0) < 0) && (errno != EEXIST) )
+    // {
+    //     char err[MSG_MAX];
+    //     sprintf(err, "can't create fifo: %s\n", FIFO_name);
+    //     write(STDOUT_FILENO, err, strlen(err));
+    //     return -1;
+    // }                
+    
+    if (mknod(FIFO_name, S_IFIFO, 0) < 0)
+    {
+        if (errno == EEXIST) 
+        {
+            char msg[MY_LINE_MAX +50];
+            memset(msg, '\0', MY_LINE_MAX+50); 
+            sprintf(msg, "*** Error: the pipe #%d->#%d already exists. ***\n", me.id+1, to+1);
+            Writen(STDOUT_FILENO, msg, strlen(msg));
+            return -1;
+        }
+        char err[MSG_MAX];
+        sprintf(err, "can't create fifo: %s\n", FIFO_name);
+        write(STDOUT_FILENO, err, strlen(err));
+        return -1;
+    }  
+
+    if (u_to = open(FIFO_name, O_WRONLY) < 0)
+    {
+        char err[MSG_MAX];
+        sprintf(err, "can't open write fifl: %s\n", FIFO_name);
+        write(STDOUT_FILENO, err, strlen(err));
+        return -1;
+    }
+    
+    FIFO_open[1][to] = u_to;
     return 0;
 }
 
-void my_setenv(int index, my_cmd &command)
+void my_setenv(my_cmd &command)
 {
 	if (command.argv.size() < 3) {
 		char err[] = "Usage: setenv [Variable] [Value].\n";
-		write(client[client_index].connfd, err, strlen(err));
+		write(STDOUT_FILENO, err, strlen(err));
         return;
 	}
 	setenv(command.argv[1].data(), command.argv[2].data(), 1);
-    client[client_index].env[command.argv[1]] = command.argv[2];
 }
 
-void my_printenv(int connfd, my_cmd &command)
+void my_printenv(my_cmd &command)
 {
 	if (command.argv.size() < 2) {
 		char err[] = "Usage: printenv [Variable].\n";
-        write(connfd, err, strlen(err));
+        write(STDOUT_FILENO, err, strlen(err));
 		return;
 	}
 	char* env_info = getenv(command.argv[1].data());
@@ -453,78 +540,112 @@ void my_printenv(int connfd, my_cmd &command)
         char msg[MSG_MAX];
         memset(msg, '\0', MSG_MAX);
         sprintf(msg, "%s\n", env_info);
-        write(connfd, msg, strlen(msg));
+        write(STDOUT_FILENO, msg, strlen(msg));
     }
 }
 
-void print_all_user(int index)
+void print_all_user()
 {
-    int connfd = client[client_index].connfd;
+    char *shm_addr;
+    char n[4];
+    memcpy(n, shm_addr, 4);
+    int num_user = atoi(n)-1;
+    
+    char snd[MSG_MAX], now[SHM_SIZE];
+    memset(snd, '\0', MSG_MAX);
+    
     char msg[MSG_MAX];
 
     memset(msg, '\0', MSG_MAX);
     sprintf(msg, "<ID>\t<nickname>\t<IP:port>\t<indicate me>\n");
-    Writen(connfd, msg, strlen(msg));
-    for (int i = 0; i < maxi; i++)
-    {
-        if (client[i].connfd < 0) continue;
+    Writen(STDOUT_FILENO, msg, strlen(msg));
+    
+    client_pid c;
+    for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
+    {       
+        memcpy(now, shm_addr + i*SHM_SIZE, SHM_SIZE+4);
+        sscanf(now, "%d %d %s %d", &c.connfd, &c.pid, c.addr, &c.port); 
+        if (c.connfd < 0) continue;
+
+        num_user--;
+        
         memset(msg, '\0', MSG_MAX);
-        sprintf(msg, "%d\t%s\t%s:%d\t%s\n", i+1, client[i].name, inet_ntoa(client[i].addr.sin_addr), client[i].addr.sin_port, (i == index)?" <-me":"");
-        Writen(connfd, msg, strlen(msg));
+        sprintf(msg, "%d\t%s\t%s:%d\t%s\n", i+1, c.name, c.addr, c.port, (c.id == me.id)?" <-me":"");
+        Writen(STDOUT_FILENO, msg, strlen(msg));
     }
+    
+    if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
 
-void tell_msg(int from, int to, std::string msg)
+void tell_msg(int to, std::string msg)
 {
     char snd[MSG_MAX];
     memset(snd, '\0', MSG_MAX);
 
     to -= 1;
 
-    if (client[to].connfd < 0)
+    client_pid t(to);
+    if (t.connfd < 0)
     {
         sprintf(snd, "*** Error: user #%d does not exist yet. ***\n", to+1);
-        Writen(client[from].connfd, snd, strlen(snd));
+        Writen(STDOUT_FILENO, snd, strlen(snd));
         return;
     }
 
-    sprintf(snd, "*** %s told you ***: %s\n", client[from].name, msg.data());
-    Writen(client[to].connfd, snd, strlen(snd));
+    /* get connfd of 'to' and send the message */
+    sprintf(snd, "*** %s told you ***: %s\n", me.name, msg.data());
+    Writen(t.connfd, snd, strlen(snd));
 }
 
-void yell_msg(int from, std::string msg)
+void yell_msg(std::string msg)
 {
     char snd[MSG_MAX];
     memset(snd, '\0', MSG_MAX);
-    sprintf(snd, "*** %s yelled ***: %s\n", client[from].name, msg.data());
+    
+    sprintf(snd, "*** %s yelled ***: %s\n", me.name, msg.data());
     broadcast(snd);
 }
 
-void change_name(int index, std::string name)
+void change_name(std::string new_name)
 {
-    char snd[MSG_MAX];
+    char *shm_addr;
+    char n[4];
+    memcpy(n, shm_addr, 4);
+    int num_user = atoi(n)-1;
+    
+    char snd[MSG_MAX], now[SHM_SIZE];
     memset(snd, '\0', MSG_MAX);
 
-    int i;
-    for (i = 0; i < maxi; i++)
-    {   
-        if (i == index) continue;
-        if (strcmp(client[i].name, name.c_str()) == 0) 
+    client_pid c;
+    for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
+    {       
+        if (i == me.connfd) continue; 
+
+        memcpy(now, shm_addr + i*SHM_SIZE, SHM_SIZE+4);
+        sscanf(now, "%d %d %s %d", &c.connfd, &c.pid, c.addr, &c.port); 
+        if (c.connfd < 0) continue;
+
+        num_user--;
+        
+        if (strcmp(c.name, new_name.c_str()) == 0) 
         {
-            sprintf(snd, "*** User '%s' already exists. ***\n", name.data());
-            Writen(client[client_index].connfd, snd, strlen(snd));
+            sprintf(snd, "*** User '%s' already exists. ***\n", new_name.data());
+            Writen(STDOUT_FILENO, snd, strlen(snd));
             return;
         }
     }
+    
+    if (shmdt(shm_addr) < 0) perror("shmdt fail");
 
-    strcpy(client[client_index].name, name.data());
-    sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", inet_ntoa(client[client_index].addr.sin_addr), client[client_index].addr.sin_port, client[client_index].name);
+    strcpy(me.name, new_name.data());
+
+    sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", me.addr, me.port, me.name);
     broadcast(snd);
 }
 
 int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
 {
-printf("in handle\n");
+
 	// fork a child to process
 	int pid = fork();
     
@@ -535,7 +656,6 @@ printf("in handle\n");
 	}
 
 	if (pid == 0) {
-printf("reading\n");
 		// read data from each pipe (FIFO)
 		for (auto id: data_list) {
 			char read_data[1024];
@@ -585,10 +705,10 @@ void check_need_data(bool &need, int (&data_pipe)[2], std::vector<int> &data_lis
 	data_list.clear();
 
 	// counter == 0 => pipe the data to the command that execute next
-	for (auto i = client[client_index].pipe_num_to.begin(); i < client[client_index].pipe_num_to.end(); ) {
+	for (auto i = pipe_num_to.begin(); i < pipe_num_to.end(); ) {
     	if (i->remain <= 0) {
             data_list.push_back(i->pipe_num);
-            client[client_index].pipe_num_to.erase(i);
+            pipe_num_to.erase(i);
         }
         else i++;
 	}
@@ -608,10 +728,10 @@ void check_need_data(bool &need, int (&data_pipe)[2], std::vector<int> &data_lis
 
 void update_pipe_num_to() { 
 
-	for (auto i = client[client_index].pipe_num_to.begin(); i < client[client_index].pipe_num_to.end(); ) {
+	for (auto i = pipe_num_to.begin(); i < pipe_num_to.end(); ) {
         i -> remain--;
 		if (i->remain < 0) {
-            client[client_index].pipe_num_to.erase(i);
+            pipe_num_to.erase(i);
         }
         else 
             i++;
@@ -654,7 +774,7 @@ void conditional_wait() {
 		for (auto s:args_of_cmd) {
 			int p_num = s.second.p_num;
             bool find = false;
-			for (auto p:client[client_index].pipe_num_to) {
+			for (auto p:pipe_num_to) {
                 if (p.pipe_num == p_num)
                 {
                     find = true;
@@ -681,18 +801,103 @@ void sig_chld(int signo)
 		
 		// free the memory!!
 		char **cmd_argv = args_of_cmd[pid].argv;
-		args_of_cmd.erase(pid);
+        if (cmd_argv != NULL) free(cmd_argv);
 		
-		if (cmd_argv != NULL) free(cmd_argv);
+        if (args_of_cmd[pid].from > 0)
+        {
+            char FIFO_name[10];
+            sprintf(FIFO_name, "%d_%d", args_of_cmd[pid].from, me.id);
+            
+            if (unlink(FIFO_name) < 0)
+            {
+                char err[MSG_MAX];
+                sprintf(err, "can't unlink\n");
+                write(STDOUT_FILENO, err, strlen(err));
+            }
+        }
+
+        if (args_of_cmd[pid].to > 0)
+        {
+            char FIFO_name[10];
+            sprintf(FIFO_name, "%d_%d", me.id, args_of_cmd[pid].to);
+            
+            if (unlink(FIFO_name) < 0)
+            {
+                char err[MSG_MAX];
+                sprintf(err, "can't unlink \n");
+                write(STDOUT_FILENO, err, strlen(err));
+            }
+        }
+        
+        args_of_cmd.erase(pid);		
     }
 
 	return;
 }
 
-void err_sys(const char* x) { 
-    perror(x); 
-    exit(1); 
+void sig_term(int signo)
+{
+// char msg[1024];
+// sprintf(msg, "received sig tem\n");
+// write(STDOUT_FILENO, msg, strlen(msg));
+
+    /* the other end finish reading */
+    // if (signo == SIGUSR1)
+    // {
+    //     int to = signo -30;
+    //     FIFO_open[1][to] = -1;
+    //     return;
+    // }
+    // /* open FIFO read */
+    // if (signo == SIGUSR2)
+    // {
+    //     char FIFO_name[10];
+    //     sprintf(FIFO_name, "%d_%d", signo, me.id);
+        
+    //     if (FIFO_open[0][signo] = open(FIFO_name, O_RDONLY) < 0)
+    //     {
+    //         char err[MSG_MAX];
+    //         sprintf(err, "can't open read fifo: %s\n", FIFO_name);
+    //         write(STDOUT_FILENO, err, strlen(err));
+    //         return;
+    //     }
+    //     return;
+    // }
+    /* disconnection, close by server */
+    if (signo == SIGINT)
+    {
+        /* close user FIFO */
+        for (auto arg:args_of_cmd)
+        {
+            kill(arg.first, 9);
+        }
+
+        while (args_of_cmd.size() > 0) sig_chld(0);
+    }
+    /* receive broadcast msg */
+    else if (signo == SIGIO)
+    {
+        char *shm_addr = (char *)shmat(shm_id[1], 0, 0);
+        if (shm_addr == NULL) err_sys("shmat fail");
+
+        char msg_len[4];
+        char msg[SHM_SIZE];
+        memcpy(msg_len, shm_addr, 4);
+        memcpy(msg, shm_addr+4, atoi(msg_len));
+
+        write(me.connfd, msg, atoi(msg_len));
+
+        /* deal with open/close FIFO */
+
+        return;
+    }
+
+    exit(0);
 }
+// void err_sys(const char* x) { 
+//     perror(x); 
+//     exit(1); 
+// }
 
 ssize_t	writen(int connfd, const char *buf, size_t size) {
 	size_t	nremain;
