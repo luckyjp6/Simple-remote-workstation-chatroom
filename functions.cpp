@@ -114,7 +114,7 @@ void broadcast(char *msg)
     {
         int connfd = client[i].connfd;
         if (connfd < 0) continue;
-        Writen(connfd, msg, strlen(msg));
+        if (send(connfd, msg, strlen(msg), MSG_NOSIGNAL) < 0) close_client(i, true);
     }
 }
 

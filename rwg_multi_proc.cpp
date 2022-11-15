@@ -15,6 +15,10 @@ int client(int id)
 
     /* clean FIFO_open */
     memset(FIFO_open, -1, 30);
+    C.clear();
+    args_of_cmd.clear();
+    clear_tmp();
+    pipe_num_to.clear();
     
     /* show welcome message */
     printf("****************************************\n** Welcome to the information server. **\n****************************************\n");
@@ -40,6 +44,7 @@ int client(int id)
         printf("%% "); fflush(stdout);
 
         char buf[MY_LINE_MAX];
+        memset(buf, '\0', MY_LINE_MAX);
         int n = read(STDIN_FILENO, buf, MY_LINE_MAX);
 
 		if (n < 0) {
@@ -63,11 +68,11 @@ int execute_line(char *line)
 {
     parse_line(line);
 
-    int status = 1;
+    int status = 0;
     for (int i = 0; i < C.size(); i++)
     {
         if (i % 50 == 0 && i != 0) conditional_wait();
-        if ((status = execute_command(C[i])) < 0) return -1; // exit        
+        if ((status = execute_command(C[i])) < 0) return status; // exit        
     }
     if (status == 0) update_pipe_num_to();
     conditional_wait();
@@ -116,6 +121,10 @@ int execute_command(my_cmd &command)
         else {
             int to = atoi(command.argv[1].data())-1;
 
+            if (to < 0) {
+                printf("*** Error: user #%d does not exist yet. ***\n", to+1);
+                return 0;
+            }
             client_pid t(to);
             read_user_info(t);
             
@@ -491,10 +500,8 @@ int check_user_pipe_to(int to, int &u_to, std::string &cmd_line)
 
 void print_all_user()
 {
-    char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
-    char n[4];
-    memcpy(n, shm_addr, 4);
-    int num_user = atoi(n);
+    int num_user = get_shm_num(shm_id[0]);
+    
     char snd[MSG_MAX], now[SHM_SIZE];
     memset(snd, '\0', MSG_MAX);
     
@@ -510,44 +517,39 @@ void print_all_user()
         
         printf("%d\t%s\t%s:%d\t%s\n", i+1, c.name, c.addr, c.port, (c.id == me.id)?" <-me":"");
     }
-    
-    if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
 
 void change_name(std::string new_name)
 {
-    char *shm_addr;
-    char n[4];
-    memcpy(n, shm_addr, 4);
-    int num_user = atoi(n)-1;
-    
-    char snd[MSG_MAX], now[SHM_SIZE];
-    memset(snd, '\0', MSG_MAX);
+    int num_user = get_shm_num(shm_id[0]);
 
-    client_pid c;
     for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
     {       
-        if (i == me.connfd) continue; 
+        if (i == me.id) {
+            num_user--;
+            continue; 
+        }
 
-        memcpy(now, shm_addr + i*SHM_SIZE, SHM_SIZE+5);
-        sscanf(now, "%d %d %s %d", &c.connfd, &c.pid, c.addr, &c.port); 
+        client_pid c(i);
+        read_user_info(c);
         if (c.connfd < 0) continue;
 
         num_user--;
         
         if (strcmp(c.name, new_name.c_str()) == 0) 
         {
-            sprintf(snd, "*** User '%s' already exists. ***\n", new_name.data());
-            Writen(STDOUT_FILENO, snd, strlen(snd));
+            printf("*** User '%s' already exists. ***\n", new_name.data());
             return;
         }
     }
     
-    if (shmdt(shm_addr) < 0) perror("shmdt fail");
-
-    strcpy(me.name, new_name.data());
-
-    sprintf(snd, "*** User from %s:%hd is named '%s'. ***\n", me.addr, me.port, me.name);
+    read_user_info(me);
+    strcpy(me.name, new_name.c_str());
+    write_user_info(me);
+    
+    char snd[MSG_MAX], now[SHM_SIZE];
+    memset(snd, '\0', MSG_MAX);
+    sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", me.addr, me.port, me.name);
     broadcast(snd);
 }
 
@@ -564,7 +566,7 @@ int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
 	}
 
 	if (pid == 0) {
-		// read data from each pipe (FIFO)
+		// read data from each pipe (fifo)
 		for (auto id: data_list) {
 			char read_data[1024];
 			int read_length;
@@ -763,11 +765,11 @@ void sig_broadcast(int signo)
     char *shm_addr = (char *)shmat(shm_id[1], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
 
-    char msg_len[4];
+    int msg_len = get_shm_num(shm_id[1]);
     char msg[SHM_SIZE];
-    memcpy(msg_len, shm_addr, 4);
-    // printf("msg len: %d", atoi(msg_len));
-    memcpy(msg, shm_addr+5, atoi(msg_len)+1);
+    memcpy(msg, shm_addr+5, msg_len+1);
+    
+    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
 
     printf("%s", msg);fflush(stdout);
 

@@ -30,7 +30,7 @@
 #define PERMS 0666
 #define SHM_SIZE 100
 
-#define OPEN_MAX 50
+#define OPEN_MAX 1000
 #define MY_LINE_MAX 15005
 #define MSG_MAX 1030
 #define COMMAND_MAX 260
@@ -69,6 +69,8 @@ struct client_pid
         pid = -1;
         argv = NULL;
         strcpy(name, "(no name)");
+        strcpy(addr, "0.0.0.0");
+        port = -1;
     }
 
     void set(int p, char **a)
@@ -98,8 +100,9 @@ void close_client(int index);
 void broadcast(char *msg);
 
 void alter_num_user(int amount);
-void write_user_info(int client_id);
+void write_user_info(client_pid c);
 void read_user_info(client_pid &c);
+int get_shm_num(int s_id);
 
 void err_sys(const char *err);
 #endif

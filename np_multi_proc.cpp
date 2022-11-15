@@ -51,9 +51,7 @@ int main(int argc, char **argv)
         {
             cp[new_id].set(pid, cli_argv);
             // printf("server received pid: %d\n", pid);
-            write_user_info(new_id);
-            client_pid c(new_id);
-            read_user_info(c);
+            write_user_info(cp[new_id]);
             printf("new client!! pid: %d, id: %d\n", pid, new_id);
         }
 	}
