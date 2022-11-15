@@ -21,6 +21,8 @@ struct args{
 	int to = -1, from = -1;
 };
 
+extern client_pid me;
+
 int client(int id);
 int execute_line(char *line);
 int execute_command(my_cmd &command);

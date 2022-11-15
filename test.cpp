@@ -23,20 +23,111 @@
 #include <map>
 #include <algorithm>
 
+#define SEM_FOLDER "./shm"
+#define PERMS 0666
+#define SHM_SIZE sizeof(client_pid)
+
+#define OPEN_MAX 50
+#define MY_LINE_MAX 15005
+#define MSG_MAX 1030
+#define COMMAND_MAX 260
+#define MY_NAME_MAX 25
+#define NUM_USER 30
+
+struct client_pid
+{
+    int id;
+    int connfd = -1;
+    int pid;
+    char **argv;
+    char name[MY_NAME_MAX];
+    char addr[20];
+    uint16_t port;
+    
+    client_pid () {};
+    client_pid (int i) {id = i;}
+
+    void reset(int i)
+    {
+        id = i;
+        connfd = -1;
+        pid = -1;
+        argv = NULL;
+        strcpy(name, "(no name)");
+    }
+
+    void set(int c, int p, char **a)
+    {
+        connfd = c;
+        pid = p;
+        argv = a;
+    }
+
+    void setaddr(sockaddr_in a)
+    {
+        strcpy(addr, inet_ntoa(a.sin_addr));
+        port = ntohs(a.sin_port);
+    }
+};
+void sig_broadcast(int signo);
 int main(){
+    signal(SIGUSR1, sig_broadcast); // handle broadcast
+    int pid = fork();
+    
+    if (pid == 0)
+    {
+        sleep(10);
+    }else {
+        char FIFO_name[20];
+        sprintf(FIFO_name, "user_pipe/0_0.txt");
+                    
+        if (mknod(FIFO_name, S_IFIFO | 0777, 0) < 0)
+        {
+            if (errno == EEXIST) 
+            {
+                printf("*** Error: the pipe #0->#0 already exists. ***\n");
+                return -1;
+            }
+            printf("can't create fifo: %s\n", FIFO_name);
+            return -1;
+        }  
 
-    char r[500], w[500];
-    sprintf(r, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", "user1", 22, "my_cmd", "user2", 2);
-    sprintf(w, "*** Error: the pipe #%d->#%d already exists. ***\n", 1, 2);
-
-    std::string rr(r), ww(w);
-    printf("%d ", rr.find("(#2"));
-    printf("%d ", rr.find("(#2)"));
-    printf("%d", ww.find("just piped"));
-    // printf("%d\n", sscanf(r, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", name[0], &id[0], cmd, name[1], &id[1]));
-    // printf("%s\n", cmd);
-    // printf("%d\n", sscanf(w, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", name[0], &id[0], cmd, name[1], &id[1]));
-    // printf("%s\n", cmd);
-
+        /* tell the reader to open FIFO read */
+        kill(pid, SIGUSR1);
+        int u_to;
+        if ((u_to = open(FIFO_name, O_WRONLY)) < 0)
+        {
+            char err[MSG_MAX];
+            sprintf(err, "can't open write fifo: %s\n", FIFO_name);
+            write(STDOUT_FILENO, err, strlen(err));
+            return -1;
+        }
+        write(u_to, "hello", strlen("hello"));
+        printf("write open\n");
+    }
+    
     return 0;
+}
+
+void sig_broadcast(int signo)
+{
+    /* open FIFO read */
+    char FIFO_name[20];
+    sprintf(FIFO_name, "user_pipe/0_0.txt");
+    
+    int nn;
+    if ((nn = open(FIFO_name, O_RDONLY)) < 0)
+    {
+        char err[MSG_MAX];
+        sprintf(err, "can't open read fifo: %s\n", FIFO_name);
+        write(STDOUT_FILENO, err, strlen(err));
+        return;
+    }
+
+    printf("read open\n");
+    char msg[254];
+    read(nn, msg, 250);
+    printf("%s\n", msg);
+
+    return;
 }

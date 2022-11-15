@@ -32,7 +32,7 @@ int main(int argc, char **argv)
         int new_id = handle_new_connection(connfd, listenfd);
         if (new_id > maxi) maxi = new_id;
         
-        printf("new client!!\n");
+        
 
         char **cli_argv = (char**) malloc(sizeof(char*)*2);
         int pid = fork();
@@ -49,13 +49,12 @@ int main(int argc, char **argv)
         }
         else
         {
-            cp[new_id].set(connfd, pid, cli_argv);
-            printf("server received pid: %d\n", pid);
+            cp[new_id].set(pid, cli_argv);
+            // printf("server received pid: %d\n", pid);
             write_user_info(new_id);
             client_pid c(new_id);
             read_user_info(c);
-            
-            close(connfd);
+            printf("new client!! pid: %d, id: %d\n", pid, new_id);
         }
 	}
     /* parent closes connected socket */
@@ -87,7 +86,7 @@ void sig_chld(int signo)
 void sig_int(int signo) /* server terminate by terminal ctrl +c */
 {
     /* clear share memory */
-    for (int i = 0; i <= 2; i++) 
+    for (int i = 0; i < 2; i++) 
         if (shmctl(shm_id[i], IPC_RMID, 0) < 0) perror("shmctl rm id fail");
 
     /* kill all children */

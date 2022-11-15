@@ -28,7 +28,7 @@
 
 #define SEM_FOLDER "./shm"
 #define PERMS 0666
-#define SHM_SIZE sizeof(client_pid)
+#define SHM_SIZE 100
 
 #define OPEN_MAX 50
 #define MY_LINE_MAX 15005
@@ -57,7 +57,7 @@ struct client_pid
     char **argv;
     char name[MY_NAME_MAX];
     char addr[20];
-    uint16_t port;
+    int port;
     
     client_pid () {};
     client_pid (int i) {id = i;}
@@ -71,17 +71,17 @@ struct client_pid
         strcpy(name, "(no name)");
     }
 
-    void set(int c, int p, char **a)
+    void set(int p, char **a)
     {
-        connfd = c;
         pid = p;
         argv = a;
     }
 
-    void setaddr(sockaddr_in a)
+    void setaddr(int fd, sockaddr_in a)
     {
+        connfd = fd;
         strcpy(addr, inet_ntoa(a.sin_addr));
-        port = ntohs(a.sin_port);
+        port = (int)ntohs(a.sin_port);
     }
 };
 
