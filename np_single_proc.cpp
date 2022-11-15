@@ -16,7 +16,6 @@ int main(int argc, char **argv)
 
     init();
     setenv("PATH", "bin:.", 1);
-    signal(SIGCHLD, sig_chld);
 
     if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
 
@@ -43,11 +42,7 @@ int main(int argc, char **argv)
         for (i = 0; i < maxi && nready > 0; i++) 
         {
             if (!FD_ISSET(client[i].connfd, &rfds)) continue;
-            for (auto e:client[i].env)
-            {
-                setenv(e.first.data(), e.second.data(), 1);
-            }
-                
+            setenv("PATH", client[i].env["PATH"].data(), 1);
 
             /* read input*/
             memset(buf, '\0', MY_LINE_MAX);

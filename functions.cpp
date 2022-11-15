@@ -18,6 +18,8 @@ void init()
     for (auto &a:user_pipe)
         for(auto &b:a)
             b.reset();
+
+    // setenv("PATH", "bin", 1);
 }
 
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
@@ -68,6 +70,7 @@ void handle_new_connection(int &connfd, const int listenfd, bool welcome)
         if (client[i].connfd < 0) 
         {
             client[i].set(connfd, cliaddr);
+
             FD_SET(connfd, &afds);
             if (welcome)
             {
@@ -96,7 +99,7 @@ void handle_new_connection(int &connfd, const int listenfd, bool welcome)
 
         // broadcast message
         memset(msg, '\0', MSG_MAX);
-        sprintf(msg, "*** User '%s' entered from %s:%d. ***\n", client[i].name, inet_ntoa(cliaddr.sin_addr), cliaddr.sin_port);
+        sprintf(msg, "*** User '%s' entered from %s:%d. ***\n", client[i].name, client[i].addr, client[i].port);
         broadcast(msg);
     }
     

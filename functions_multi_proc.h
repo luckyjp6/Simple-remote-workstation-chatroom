@@ -57,7 +57,7 @@ struct client_pid
     char **argv;
     char name[MY_NAME_MAX];
     char addr[20];
-    int port;
+    uint16_t port;
     
     client_pid () {};
     client_pid (int i) {id = i;}
@@ -81,7 +81,7 @@ struct client_pid
     void setaddr(sockaddr_in a)
     {
         strcpy(addr, inet_ntoa(a.sin_addr));
-        port = a.sin_port;
+        port = ntohs(a.sin_port);
     }
 };
 
@@ -94,7 +94,7 @@ void init();
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
 int handle_new_connection(int &connfd, const int listenfd);
 
-void close_client(int index, bool goodbye);
+void close_client(int index);
 void broadcast(char *msg);
 
 void alter_num_user(int amount);

@@ -5,8 +5,6 @@ client_pid cp[OPEN_MAX];
 key_t shm_key[2]; // user data, broadcast
 int shm_id[2];
 
-
-
 void init()
 {
     /* set user info */
@@ -103,13 +101,6 @@ int handle_new_connection(int &connfd, const int listenfd)
         return -1;
     }
 
-    char msg[MSG_MAX];
-    
-    // show welcome message
-    memset(msg, '\0', MSG_MAX);
-    sprintf(msg, "****************************************\n** Welcome to the information server. **\n****************************************\n");
-    write(connfd, msg, strlen(msg));
-
     return new_id;
 }
 
@@ -133,7 +124,7 @@ void broadcast(char *msg)
     char n[4];
     memcpy(n, shm_addr, 4);
     int num_user = atoi(n);
-write(STDOUT_FILENO, "before kill\n", strlen("before kill\n"));
+    
     char now[SHM_SIZE];
     
     for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
@@ -142,23 +133,21 @@ write(STDOUT_FILENO, "before kill\n", strlen("before kill\n"));
 
         read_user_info(c);
         if (c.connfd < 0) continue;
-        printf("pid: %d\n", c.pid);  
+        
         num_user--;
 
-        kill(c.pid, SIGIO);
+        if (kill(c.pid, SIGUSR1) < 0)
+        {
+            err_sys("signal havn't been init\n");
+        }
     }
     
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
-printf("end broadcast\n");
 }
 
 void close_client(int index) 
-{
-    int connfd/* = get client connfd*/;
-    
-    close(connfd);
+{    
     alter_num_user(-1);
-    kill(cp[index].pid, SIGINT);
 
     read_user_info(cp[index]);
 
@@ -167,8 +156,8 @@ void close_client(int index)
     sprintf(msg, "*** User '%s' left. ***\n", cp[index].name);
     
     /* release client id */
-    cp[index].reset(cp[index].id);
-    write_user_info(cp[index].id);
+    cp[index].reset(index);
+    write_user_info(index);
 
     broadcast(msg);
 }
@@ -211,7 +200,7 @@ void read_user_info(client_pid &c)
     if (shm_addr == NULL) err_sys("shmat fail");    
     char now[SHM_SIZE];
     memcpy(now, shm_addr + c.id*SHM_SIZE, SHM_SIZE+4);
-    sscanf(now, "%d %d %s %d", &c.connfd, &c.pid, c.addr, &c.port); 
+    sscanf(now, "%d %d %s %hd", &c.connfd, &c.pid, c.addr, &c.port); 
 
     // char msg[1024];
     // sprintf(msg, "new user: connfd: %d, pid: %d, addr: %s, port: %d\n", c.connfd, c.pid, c.addr, c.port);
@@ -252,3 +241,4 @@ void err_sys(const char *err)
     perror(err);
     exit(-1);
 }
+

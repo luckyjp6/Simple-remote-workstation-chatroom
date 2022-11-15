@@ -469,7 +469,7 @@ void print_all_user(int index)
     {
         if (client[i].connfd < 0) continue;
         memset(msg, '\0', MSG_MAX);
-        sprintf(msg, "%d\t%s\t%s:%d\t%s\n", i+1, client[i].name, inet_ntoa(client[i].addr.sin_addr), client[i].addr.sin_port, (i == index)?" <-me":"");
+        sprintf(msg, "%d\t%s\t%s:%d\t%s\n", i+1, client[i].name,client[i].addr, client[i].port, (i == index)?" <-me":"");
         Writen(connfd, msg, strlen(msg));
     }
 }
@@ -518,12 +518,13 @@ void change_name(int index, std::string name)
     }
 
     strcpy(client[client_index].name, name.data());
-    sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", inet_ntoa(client[client_index].addr.sin_addr), client[client_index].addr.sin_port, client[client_index].name);
+    sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", client[client_index].addr, client[client_index].port, client[client_index].name);
     broadcast(snd);
 }
 
 int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
 {
+printf("in handle\n");
 	// fork a child to process
 	int pid = fork();
     
@@ -534,6 +535,7 @@ int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
 	}
 
 	if (pid == 0) {
+printf("reading\n");
 		// read data from each pipe (FIFO)
 		for (auto id: data_list) {
 			char read_data[1024];

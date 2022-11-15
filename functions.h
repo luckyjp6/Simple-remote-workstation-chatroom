@@ -45,7 +45,8 @@ struct pnt // pipe number to
 struct Client_info 
 {
     int connfd = -1;
-    sockaddr_in addr;
+    char addr[20];
+    uint16_t port;
     char name[MY_NAME_MAX+5];
     std::map<std::string, std::string> env;
     std::vector<pnt> pipe_num_to; // pipe_num, counter   
@@ -66,7 +67,8 @@ struct Client_info
     void set(int fd, sockaddr_in add)
     {
         connfd = fd;
-        addr = add;
+        strcpy(addr, inet_ntoa(add.sin_addr));
+        port = ntohs(add.sin_port);
     }
 }; 
 

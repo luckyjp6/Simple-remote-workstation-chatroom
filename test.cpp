@@ -6,6 +6,7 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <sys/shm.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/signal.h>
 #include <sys/wait.h>
@@ -15,7 +16,6 @@
 #include <cstring>
 #include <time.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,45 +23,20 @@
 #include <map>
 #include <algorithm>
 
-#define OPEN_MAX 1024
-#define MY_LINE_MAX 15005
-#define MSG_MAX 1030
-#define COMMAND_MAX 260
-#define MY_NAME_MAX 25
-#define NUM_USER 30
-
-using namespace std;
-
-struct client_pid
-{
-    int connfd = -1;        // 4
-    int pid;                // 4
-    char **argv;            
-    char name[MY_NAME_MAX]; // 32
-    sockaddr_in addr;       // 14 + 4
-    
-    void reset()
-    {
-        connfd = pid = -1;
-        argv = NULL;
-        strcpy(name, "(no name)");
-    }
-
-    void set(int c, int p, char **a)
-    {
-        connfd = c;
-        pid = p;
-        argv = a;
-    }
-};
-
 int main(){
-    client_pid c;
-	cout << sizeof(int) << endl;
-	cout << sizeof(char**) << endl;
-    char msg[20];
-    sprintf(msg, "%s", inet_ntoa(c.addr.sin_addr));
-	cout << strlen(msg) << endl;
+
+    char r[500], w[500];
+    sprintf(r, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", "user1", 22, "my_cmd", "user2", 2);
+    sprintf(w, "*** Error: the pipe #%d->#%d already exists. ***\n", 1, 2);
+
+    std::string rr(r), ww(w);
+    printf("%d ", rr.find("(#2"));
+    printf("%d ", rr.find("(#2)"));
+    printf("%d", ww.find("just piped"));
+    // printf("%d\n", sscanf(r, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", name[0], &id[0], cmd, name[1], &id[1]));
+    // printf("%s\n", cmd);
+    // printf("%d\n", sscanf(w, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", name[0], &id[0], cmd, name[1], &id[1]));
+    // printf("%s\n", cmd);
+
     return 0;
 }
-

@@ -21,18 +21,15 @@ struct args{
 	int to = -1, from = -1;
 };
 
+int client(int id);
 int execute_line(char *line);
 int execute_command(my_cmd &command);
 void parse_line(char *line);
 
 int check_user_pipe_from(int from, int &u_from);
-int check_user_pipe_to(int to, int &u_to);
+int check_user_pipe_to(int to, int &u_to, std::string &cmd_line);
 
-void my_setenv(my_cmd &command);
-void my_printenv(my_cmd &command);
 void print_all_user();
-void tell_msg(int to, std::string msg);
-void yell_msg(std::string msg);
 void change_name(std::string name);
 
 int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list);
@@ -50,22 +47,15 @@ void wait_all_children(); // wait for all children at the end of parent process
 void conditional_wait(); // conditionally wait for some children at the end of each line
 
 // void err_sys(const char* x); // used in W/writen() and R/readn()
-void sig_chld(int signo); // signal handler
-void sig_term(int signo);
-
-
-
+void sig_cli_chld(int signo); // signal handler
+void sig_cli_int(int signo);
+void sig_broadcast(int signo);
+void FIFO_read(int from);
 
 // safer read and write
 ssize_t writen(int fid, const char *buf, size_t size);
 void Writen(int fid, char *buf, size_t size);
 ssize_t	readn(int fid, char *buf, size_t size);
 ssize_t Readn(int fid, char *buf, size_t size);
-
-
-
-
-
-void sig_term(int signo);
 
 #endif
