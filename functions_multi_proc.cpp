@@ -18,6 +18,7 @@ void init()
     memset(shm_addr, '\0', SHM_SIZE*OPEN_MAX);
 
     char n[4];
+    memset(n, '\0', 4);
     sprintf(n, "%d", 0);
     memcpy(shm_addr, n, 4);
 
@@ -37,8 +38,9 @@ void init()
     if (broadcast_shm == NULL) err_sys("shmat fail");
 
     memset(broadcast_shm, '\0', MY_LINE_MAX);
-    
+
     memcpy(broadcast_shm, n, 4);
+    memcpy(broadcast_shm+5, n, 4);
     
     if (shmdt(broadcast_shm) < 0) err_sys("shmdt fail");
 
@@ -116,48 +118,58 @@ int handle_new_connection(int &connfd, const int listenfd)
         return -1;
     }
 
+    update_read_user();
     return new_id;
 }
 
 void broadcast(char *msg)
 {
-// printf("in broadcast\n");
-    /* broad cast message in share memory */
-    
-    char *broadcast_addr = (char *)shmat(shm_id[1], 0, 0);
-    if (broadcast_addr == NULL) err_sys("shmat fail");
-    memset(broadcast_addr, '\0', MY_LINE_MAX);
-    
-    char nn[4]; sprintf(nn, "%d", (int)strlen(msg));
-    memcpy(broadcast_addr, nn, 4);
-    memcpy(broadcast_addr+5, msg, strlen(msg));
-    if (shmdt(broadcast_addr) < 0) err_sys("shmdt fail");
+    /* broadcast message in share memory */
+    int num_current_user = get_shm_num(shm_id[0]);
 
-    /* send signal to each client */
-    int num_user = get_shm_num(shm_id[0]);
-
-    char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
-    if (shm_addr == NULL) err_sys("shmat fail");    
-    char now[SHM_SIZE];
-    
-    for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
+    for (int i = 0; i < num_current_user; i++)
     {
-        client_pid c(i);
-        read_user_info(c);
-
-        if (c.connfd < 0) continue;
-        
-        num_user--;
-        
-        if (kill(c.pid, SIGUSR1) < 0)
-        {
-            err_sys("signal havn't been init\n");
-        }
+        tell(msg, i);
     }
     
-    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
+    // char *broadcast_addr = (char *)shmat(shm_id[1], 0, 0);
+    // if (broadcast_addr == NULL) err_sys("shmat fail");
+
+    // int len = get_shm_num(shm_id[1]);
+
+    // // blocked
+    // while(get_shm_num(shm_id[0]) > get_read_user());
+
+    // memset(broadcast_addr, '\0', MY_LINE_MAX);
     
-// printf("leave broadcast\n");
+    // char nn[4]; sprintf(nn, "%d", (int)strlen(msg));
+    // memcpy(broadcast_addr, nn, 4);
+    // memcpy(broadcast_addr+10, msg, strlen(msg));
+    // if (shmdt(broadcast_addr) < 0) err_sys("shmdt fail");
+
+    // /* send signal to each client */
+    // int num_user = get_shm_num(shm_id[0]);
+
+    // char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
+    // if (shm_addr == NULL) err_sys("shmat fail");    
+    // char now[SHM_SIZE];
+    
+    // for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
+    // {
+    //     client_pid c(i);
+    //     read_user_info(c);
+
+    //     if (c.connfd < 0) continue;
+        
+    //     num_user--;
+        
+    //     if (kill(c.pid, SIGUSR1) < 0)
+    //     {
+    //         err_sys("signal havn't been init\n");
+    //     }
+    // }
+    
+    // if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
     return;
 }
 
@@ -190,7 +202,7 @@ void close_client(int index)
     if (cp[index].connfd > 0)
     {
         close(cp[index].connfd);
-        // alter_num_user(-1);
+        alter_num_user(-1);
 
         read_user_info(cp[index]);
 
@@ -271,6 +283,38 @@ int get_shm_num(int s_id)
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
 
     return len;
+}
+
+int get_read_user()
+{
+    char *shm_addr = (char *)shmat(shm_id[1], 0, 0);
+    if (shm_addr == NULL) err_sys("shmat fail");
+
+    char n[4];
+    memcpy(n, shm_addr+5, 4);
+    int num = atoi(n);
+
+    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
+
+    return num;
+}
+
+void update_read_user()
+{
+    char *shm_addr = (char *)shmat(shm_id[1], 0, 0);
+    if (shm_addr == NULL) err_sys("shmat fail");
+
+    char n[4];
+    memcpy(n, shm_addr+5, 4);
+    
+    int num = atoi(n)+1;
+    
+    memset(n ,'\0', 4);
+    sprintf(n, "%d", num);
+
+    memcpy(shm_addr+5, n, 4);
+
+    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
 }
 
 // int sem_create(int index)

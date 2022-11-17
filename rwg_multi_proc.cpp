@@ -125,7 +125,7 @@ int execute_command(my_cmd &command)
             if (t.connfd < 0) printf("*** Error: user #%d does not exist yet. ***\n", to+1);
             else {
                 char msg[MSG_MAX+100];
-                sprintf(msg, "*** %s told you ***: %s", me.name, command.argv[2].data());
+                sprintf(msg, "*** %s told you ***: %s\n", me.name, command.argv[2].data());
                 tell(msg, to);
             }
         }
@@ -721,18 +721,6 @@ void sig_cli_chld(int signo)
                 printf("can't remove %s\n", FIFO_name);
             }
         }
-
-        // if (args_of_cmd[pid].to >= 0)
-        // {
-        //     char FIFO_name[50];
-        //     sprintf(FIFO_name, "user_pipe/%d_%d.txt", me.id, args_of_cmd[pid].to);
-            
-        //     if (remove(FIFO_name) < 0)
-        //     {
-        //         printf("can't remove %s\n", FIFO_name);
-        //     }
-        // }
-        
         args_of_cmd.erase(pid);		
     }
 
@@ -771,7 +759,23 @@ void sig_tell(int signo)
 
     if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
 
-    printf("%s\n", msg); fflush(stdout);
+    printf("%s", msg); fflush(stdout);
+    std::string f(msg);
+    int jp = f.find("just piped");
+    if (jp > 0) 
+    {
+        char one[3] = "(#", mm[10];
+        sprintf(mm, "(#%d)", me.id+1);
+        int oo = f.find(one), tt = f.find(mm);
+        if (oo > 0 && tt > 0 && oo != tt) 
+        {
+            char char_f[4];
+            int from;
+            memcpy(char_f, msg + oo + 2, 4);
+            from = atoi(char_f);
+            FIFO_read(from-1);
+        }
+    }
     
     return;
 }
@@ -783,14 +787,15 @@ void sig_broadcast(int signo)
 
     int msg_len = get_shm_num(shm_id[1]);
     char msg[SHM_SIZE];
-    memcpy(msg, shm_addr+5, msg_len+1);
+    memcpy(msg, shm_addr+10, msg_len+1);
     
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
+
+    update_read_user();
 
     printf("%s", msg);fflush(stdout);
 
     std::string f(msg);
-    // printf("msg: %s, just piped at: %ld\n", msg, f.find("just piped"));
     int jp = f.find("just piped");
     if (jp > 0) 
     {

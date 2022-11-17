@@ -104,6 +104,8 @@ void alter_num_user(int amount);
 void write_user_info(client_pid c);
 void read_user_info(client_pid &c);
 int get_shm_num(int s_id);
+int get_read_user();
+void update_read_user();
 
 void err_sys(const char *err);
 #endif
