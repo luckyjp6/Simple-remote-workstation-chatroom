@@ -21,13 +21,7 @@ int client(int id)
     pipe_num_to.clear();
     
     /* show welcome message */
-    printf("****************************************\n** Welcome to the information server. **\n****************************************\n");
-
-    setenv("PATH", "bin:.", 1);
-    signal(SIGCHLD, sig_cli_chld);
-    signal(SIGINT, sig_cli_int);
-    signal(SIGTERM, sig_cli_int);
-    
+    printf("****************************************\n** Welcome to the information server. **\n****************************************\n");    
 
     /* broadcast message */
     char msg[MSG_MAX];
@@ -193,7 +187,8 @@ int execute_command(my_cmd &command)
 
             client_pid c(from);
             read_user_info(c);
-
+            
+            cmd_line.erase(cmd_line.end()-1);
             sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", me.name, me.id+1, c.name, from+1, cmd_line.data());
             broadcast(msg);
 
@@ -404,7 +399,6 @@ void parse_line(char *line)
         {
             s.erase(0, 1);
             tmp.user_pipe_from = atoi(s.data())-1;
-            s_line.erase(s_line.end()-1);
             tmp.user_pipe_command = s_line;
         }
 		else if (s[0] == '>') 
@@ -414,7 +408,6 @@ void parse_line(char *line)
             {
                 s.erase(0, 1);
                 tmp.user_pipe_to = atoi(s.data())-1;
-                s_line.erase(s_line.end()-1);
                 tmp.user_pipe_command = s_line;
             }
         }
@@ -438,7 +431,14 @@ int check_user_pipe_from(int from, int &u_from)
     if (f.connfd < 0) 
     { 
         printf("*** Error: user #%d does not exist yet. ***\n", from+1);
-        if (FIFO_open[from] > 0) FIFO_open[from] = -1;
+        if (FIFO_open[from] > 0) {
+            FIFO_open[from] = -1;
+
+            char FIFO_name[50];
+            sprintf(FIFO_name, "user_pipe/%d_%d.txt", from, me.id);
+
+            if (remove(FIFO_name) < 0) printf("can't unlink\n");
+        }
         return -1;
     }
 
@@ -469,7 +469,7 @@ int check_user_pipe_to(int to, int &u_to, std::string &cmd_line)
         return -1;
     }
                 
-    if (mknod(FIFO_name, S_IFIFO | 0777, 0) < 0)
+    if (mkfifo(FIFO_name, S_IFIFO | 0777) < 0)
     {
         if (errno == EEXIST) 
         {
@@ -484,14 +484,13 @@ int check_user_pipe_to(int to, int &u_to, std::string &cmd_line)
     char msg[MY_LINE_MAX +50];
     memset(msg, '\0', MY_LINE_MAX+50); 
 
+    cmd_line.erase(cmd_line.end()-1);
     sprintf(msg, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", me.name, me.id+1, cmd_line.data(), t.name, t.id+1);
     broadcast(msg);
 
     if ((u_to = open(FIFO_name, O_WRONLY)) < 0)
     {
-        char err[MSG_MAX];
-        sprintf(err, "can't open write fifo: %s\n", FIFO_name);
-        write(STDOUT_FILENO, err, strlen(err));
+        printf("can't open write fifo: %s\n", FIFO_name);
         return -1;
     }
 
@@ -708,36 +707,31 @@ void sig_cli_chld(int signo)
 	int	pid, stat;
 
 	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0){
-		
 		// free the memory!!
 		char **cmd_argv = args_of_cmd[pid].argv;
         if (cmd_argv != NULL) free(cmd_argv);
 		
-        if (args_of_cmd[pid].from > 0)
+        if (args_of_cmd[pid].from >= 0)
         {
             char FIFO_name[50];
             sprintf(FIFO_name, "user_pipe/%d_%d.txt", args_of_cmd[pid].from, me.id);
             
-            if (unlink(FIFO_name) < 0)
+            if (remove(FIFO_name) < 0)
             {
-                char err[MSG_MAX];
-                sprintf(err, "can't unlink\n");
-                write(STDOUT_FILENO, err, strlen(err));
+                printf("can't remove %s\n", FIFO_name);
             }
         }
 
-        if (args_of_cmd[pid].to > 0)
-        {
-            char FIFO_name[50];
-            sprintf(FIFO_name, "user_pipe/%d_%d.txt", me.id, args_of_cmd[pid].to);
+        // if (args_of_cmd[pid].to >= 0)
+        // {
+        //     char FIFO_name[50];
+        //     sprintf(FIFO_name, "user_pipe/%d_%d.txt", me.id, args_of_cmd[pid].to);
             
-            if (unlink(FIFO_name) < 0)
-            {
-                char err[MSG_MAX];
-                sprintf(err, "can't unlink \n");
-                write(STDOUT_FILENO, err, strlen(err));
-            }
-        }
+        //     if (remove(FIFO_name) < 0)
+        //     {
+        //         printf("can't remove %s\n", FIFO_name);
+        //     }
+        // }
         
         args_of_cmd.erase(pid);		
     }
@@ -748,11 +742,12 @@ void sig_cli_chld(int signo)
 void sig_cli_int(int signo)
 {    
     /* disconnection, close by server */  
-
+printf("in sig cli int\n");
     /* close user FIFO */
     for (auto arg:args_of_cmd)
     {
         kill(arg.first, 9);
+        sig_cli_chld(0);
     }
 
     while (args_of_cmd.size() > 0) sig_cli_chld(0);
@@ -795,12 +790,14 @@ void sig_broadcast(int signo)
     printf("%s", msg);fflush(stdout);
 
     std::string f(msg);
-    if (f.find("just pipe") > 0) 
+    // printf("msg: %s, just piped at: %ld\n", msg, f.find("just piped"));
+    int jp = f.find("just piped");
+    if (jp > 0) 
     {
-        char one[3] = "(#", two[10];
-        sprintf(two, "(#%d)", me.id+1);
-        int oo = f.find(one), tt = f.find(two);
-        if (tt > 0 && oo != tt) 
+        char one[3] = "(#", mm[10];
+        sprintf(mm, "(#%d)", me.id+1);
+        int oo = f.find(one), tt = f.find(mm);
+        if (oo > 0 && tt > 0 && oo != tt) 
         {
             char char_f[4];
             int from;
@@ -820,6 +817,9 @@ void FIFO_read(int from)
     if ((FIFO_open[from] = open(FIFO_name, O_RDONLY)) < 0)
     {
         printf("can't open read fifo: %s\n", FIFO_name);
+        char msg[MSG_MAX];
+        sprintf(msg, "!!!!!!!!!!!!!!!!!!!!!!!user #%d can't open read fifo: %s\n", me.id+1, FIFO_name);
+        broadcast(msg);
         return;
     }
 

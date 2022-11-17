@@ -41,6 +41,11 @@ int main(int argc, char **argv)
 
         if (pid == 0) 
         {
+            setenv("PATH", "bin:.", 1);
+            signal(SIGCHLD, sig_cli_chld);
+            signal(SIGINT, sig_cli_int);
+            signal(SIGTERM, sig_cli_int);
+
             close(listenfd);
 
             for (auto c:cp)
