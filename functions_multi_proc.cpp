@@ -3,8 +3,8 @@
 
 client_pid cp[OPEN_MAX];
 
-key_t shm_key[2]; // user data, broadcast
-int shm_id[2];
+key_t shm_key[3]; // user data, broadcast
+int shm_id[3];
 
 void init()
 {
@@ -41,6 +41,18 @@ void init()
     memcpy(broadcast_shm, n, 4);
     
     if (shmdt(broadcast_shm) < 0) err_sys("shmdt fail");
+
+    /* set user call */
+    shm_key[2] = (key_t)(1234+2);
+    if ((shm_id[2] = shmget(shm_key[2], MSG_MAX+10, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
+    char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
+    if (msg_shm == NULL) err_sys("shmat fail");
+
+    memset(msg_shm, '\0', MSG_MAX+10);
+    
+    memcpy(msg_shm, n, 4);
+    
+    if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
 
     /* clear client-pid */
     for (int i = 0; i < OPEN_MAX; i++) cp[i].reset(i);
@@ -149,23 +161,51 @@ void broadcast(char *msg)
     return;
 }
 
+void tell(char *msg, int to)
+{
+    char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
+    if (msg_shm == NULL) err_sys("shmat fail");
+    
+    int len = 1;
+    while (get_shm_num(shm_id[2])> 0);
+
+    memset(msg_shm, '\0', MSG_MAX+10);
+
+    char nn[4]; 
+    sprintf(nn, "%d", (int)strlen(msg));
+    memcpy(msg_shm, nn, 4);
+    memcpy(msg_shm+5, msg, strlen(msg));
+    if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
+
+    /* send signal to each client */
+    client_pid t(to);
+    read_user_info(t);
+    kill(t.pid, SIGUSR2);
+    
+    return;
+}
+
 void close_client(int index) 
 {    
-// printf("close client %d\n", index);
-    close(cp[index].connfd);
-    alter_num_user(-1);
+    if (cp[index].connfd > 0)
+    {
+        close(cp[index].connfd);
+        // alter_num_user(-1);
 
-    read_user_info(cp[index]);
+        read_user_info(cp[index]);
 
-    char msg[NAME_MAX + 20];
-    memset(msg, '\0', NAME_MAX + 20);
-    sprintf(msg, "*** User '%s' left. ***\n", cp[index].name);
-    
-    /* release client id */
-    cp[index].reset(index);
-    write_user_info(cp[index]);
+        char msg[NAME_MAX + 20];
+        memset(msg, '\0', NAME_MAX + 20);
+        sprintf(msg, "*** User '%s' left. ***\n", cp[index].name);
+        
+        /* release client id */
+        cp[index].reset(index);
+        write_user_info(cp[index]);
 
-    broadcast(msg);
+        broadcast(msg);
+        
+        printf("goodbye\n");
+    }
 }
 
 void alter_num_user(int amount)
@@ -203,13 +243,11 @@ void write_user_info(client_pid c)
 
 void read_user_info(client_pid &c)
 {
-// printf("read client %d\n", c.id);
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");    
     char now[SHM_SIZE];
     
     memcpy(now, shm_addr + c.id*SHM_SIZE +5, SHM_SIZE);
-    // char *tmp_char = strtok(now, " \n\r");
 
     sscanf(now, "%d %d %s %d", &c.connfd, &c.pid, c.addr, &c.port); 
     
@@ -218,9 +256,6 @@ void read_user_info(client_pid &c)
     ss = strtok(NULL, "\0");
     strcpy(c.name, ss);
 
-// printf("%s\n", now);
-    // printf("read user: connfd: %d, pid: %d, addr: %s, port: %d\n", c.connfd, c.pid, c.addr, c.port);
-    
     if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
 

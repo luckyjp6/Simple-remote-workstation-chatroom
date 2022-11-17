@@ -23,14 +23,16 @@ int main(int argc, char **argv)
     setenv("PATH", ".", 1);
     signal(SIGCHLD, sig_chld); // handle close connection
     signal(SIGUSR1, sig_broadcast); // handle broadcast
+    signal(SIGUSR2, sig_tell); // handle tell
     signal(SIGINT,  sig_int); // handle server termination
+    signal(SIGTERM,  sig_int); // handle server termination
 
     if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
 
 	for ( ; ; ) 
     {
         int new_id = handle_new_connection(connfd, listenfd);
-        if (new_id > maxi) maxi = new_id;
+        if (new_id >= maxi) maxi = new_id+1;
         
         
 
@@ -40,6 +42,11 @@ int main(int argc, char **argv)
         if (pid == 0) 
         {
             close(listenfd);
+
+            for (auto c:cp)
+            {
+                if (c.connfd > 0 && c.connfd != connfd) close(c.connfd);
+            }
             dup2(connfd, STDIN_FILENO);
             dup2(connfd, STDOUT_FILENO);
             dup2(connfd, STDERR_FILENO);
@@ -66,13 +73,13 @@ void sig_chld(int signo)
 	int	pid, stat;
 
 	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0){
-		for (int i = 0; i <= maxi; i++) 
+		for (int i = 0; i < maxi; i++) 
         {
             if (pid == cp[i].pid)
             {
-                close_client(i);
                 free(cp[i].argv);
-                printf("goodbye\n");
+                close_client(i);
+                
                 return;
             }
         }
@@ -83,25 +90,35 @@ void sig_chld(int signo)
 
 void sig_int(int signo) /* server terminate by terminal ctrl +c */
 {
-    /* clear share memory */
-    for (int i = 0; i < 2; i++) 
-        if (shmctl(shm_id[i], IPC_RMID, 0) < 0) perror("shmctl rm id fail");
+    printf("in sig_int, maxi = %d\n", maxi);
 
     /* kill all children */
     bool remain = true;
+    for (int i = 0; i < maxi; i++)
+    {
+        if (cp[i].pid > 0) 
+        {printf("%d still alive\n", i);
+            remain = true;
+            kill(cp[i].pid, SIGINT);
+            close_client(i);
+            sig_chld(0);
+            break;
+        }
+    }
     while (remain)
     {
         remain = false;
         for (int i = 0; i < maxi; i++)
-        {
             if (cp[i].pid > 0) 
             {
-                remain = true;
-                kill(cp[i].pid, SIGINT);
                 sig_chld(0);
                 break;
             }
-        }
     }
+
+    /* clear share memory */
+    for (int i = 0; i < 3; i++) 
+        if (shmctl(shm_id[i], IPC_RMID, 0) < 0) perror("shmctl rm id fail");
+
     exit(1);
 }

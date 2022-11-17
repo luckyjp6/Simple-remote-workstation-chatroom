@@ -127,12 +127,12 @@ int execute_command(my_cmd &command)
             }
             client_pid t(to);
             read_user_info(t);
-            
+                   
             if (t.connfd < 0) printf("*** Error: user #%d does not exist yet. ***\n", to+1);
             else {
                 char msg[MSG_MAX+100];
-                sprintf(msg, "*** %s told you ***: %s\n", me.name, command.argv[2].data());
-                write(t.connfd, msg, strlen(msg));
+                sprintf(msg, "*** %s told you ***: %s", me.name, command.argv[2].data());
+                tell(msg, to);
             }
         }
         return 0;
@@ -758,6 +758,27 @@ void sig_cli_int(int signo)
     while (args_of_cmd.size() > 0) sig_cli_chld(0);
 
     exit(0);
+}
+
+void sig_tell(int signo)
+{
+    char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
+    if (msg_shm == NULL) err_sys("shmat fail");
+    
+    int len = get_shm_num(shm_id[2]);
+    char msg[MSG_MAX];
+    memset(msg, '\0', MSG_MAX);
+    memcpy(msg, msg_shm+5, len);
+    
+    char nn[4]; 
+    sprintf(nn, "%d", 0);
+    memcpy(msg_shm, nn, 4);
+
+    if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
+
+    printf("%s\n", msg); fflush(stdout);
+    
+    return;
 }
 
 void sig_broadcast(int signo)

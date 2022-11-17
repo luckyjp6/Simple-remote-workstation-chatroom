@@ -30,7 +30,7 @@
 #define PERMS 0666
 #define SHM_SIZE 100
 
-#define OPEN_MAX 1000
+#define OPEN_MAX 50
 #define MY_LINE_MAX 15005
 #define MSG_MAX 1030
 #define COMMAND_MAX 260
@@ -89,8 +89,8 @@ struct client_pid
 
 extern client_pid cp[OPEN_MAX];
 
-extern key_t shm_key[2]; // user data, broadcast
-extern int shm_id[2];
+extern key_t shm_key[3]; // user data, broadcast
+extern int shm_id[3];
 void init();
 
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
@@ -98,6 +98,7 @@ int handle_new_connection(int &connfd, const int listenfd);
 
 void close_client(int index);
 void broadcast(char *msg);
+void tell(char *msg, int to);
 
 void alter_num_user(int amount);
 void write_user_info(client_pid c);

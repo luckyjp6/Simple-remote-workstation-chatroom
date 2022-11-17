@@ -51,6 +51,7 @@ void conditional_wait(); // conditionally wait for some children at the end of e
 // void err_sys(const char* x); // used in W/writen() and R/readn()
 void sig_cli_chld(int signo); // signal handler
 void sig_cli_int(int signo);
+void sig_tell(int signo);
 void sig_broadcast(int signo);
 void FIFO_read(int from);
 
