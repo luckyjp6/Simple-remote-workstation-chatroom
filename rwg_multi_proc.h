@@ -55,10 +55,4 @@ void sig_tell(int signo);
 void sig_broadcast(int signo);
 void FIFO_read(int from);
 
-// safer read and write
-ssize_t writen(int fid, const char *buf, size_t size);
-void Writen(int fid, char *buf, size_t size);
-ssize_t	readn(int fid, char *buf, size_t size);
-ssize_t Readn(int fid, char *buf, size_t size);
-
 #endif

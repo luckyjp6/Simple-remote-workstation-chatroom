@@ -23,6 +23,7 @@ void init()
     memcpy(shm_addr, n, 4);
 
     char now[SHM_SIZE];
+    memset(now, '\0', SHM_SIZE);
     sprintf(now, "%d %d %s %d %s", -1, -1, "0.0.0.0", 0, "(no name)");
     for (int i = 0; i < OPEN_MAX; i++)
     {
@@ -67,12 +68,6 @@ int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
     int buf_size = MY_LINE_MAX;
     setsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, (const char*)&buf_size, sizeof(buf_size));
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, (const void *)&reuse, sizeof(reuse));
-
-    // socklen_t length; 
-    // int ss = 0;
-    // length = sizeof(ss);
-    // if (getsockopt(listenfd, SOL_SOCKET, SO_RCVBUF, &ss, &length) < 0) printf("failed\n");
-    // printf("rcv buf size: %d\n", ss);
 
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family      = AF_INET;
@@ -127,49 +122,8 @@ void broadcast(char *msg)
     /* broadcast message in share memory */
     int num_current_user = get_shm_num(shm_id[0]);
 
-    for (int i = 0; i < num_current_user; i++)
-    {
-        tell(msg, i);
-    }
-    
-    // char *broadcast_addr = (char *)shmat(shm_id[1], 0, 0);
-    // if (broadcast_addr == NULL) err_sys("shmat fail");
+    for (int i = 0; i < num_current_user; i++) tell(msg, i);
 
-    // int len = get_shm_num(shm_id[1]);
-
-    // // blocked
-    // while(get_shm_num(shm_id[0]) > get_read_user());
-
-    // memset(broadcast_addr, '\0', MY_LINE_MAX);
-    
-    // char nn[4]; sprintf(nn, "%d", (int)strlen(msg));
-    // memcpy(broadcast_addr, nn, 4);
-    // memcpy(broadcast_addr+10, msg, strlen(msg));
-    // if (shmdt(broadcast_addr) < 0) err_sys("shmdt fail");
-
-    // /* send signal to each client */
-    // int num_user = get_shm_num(shm_id[0]);
-
-    // char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
-    // if (shm_addr == NULL) err_sys("shmat fail");    
-    // char now[SHM_SIZE];
-    
-    // for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
-    // {
-    //     client_pid c(i);
-    //     read_user_info(c);
-
-    //     if (c.connfd < 0) continue;
-        
-    //     num_user--;
-        
-    //     if (kill(c.pid, SIGUSR1) < 0)
-    //     {
-    //         err_sys("signal havn't been init\n");
-    //     }
-    // }
-    
-    // if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
     return;
 }
 
@@ -184,12 +138,13 @@ void tell(char *msg, int to)
     memset(msg_shm, '\0', MSG_MAX+10);
 
     char nn[4]; 
+    memset(nn, '\0', 4);
     sprintf(nn, "%d", (int)strlen(msg));
     memcpy(msg_shm, nn, 4);
     memcpy(msg_shm+5, msg, strlen(msg));
     if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
 
-    /* send signal to each client */
+    /* send signal to client */
     client_pid t(to);
     read_user_info(t);
     kill(t.pid, SIGUSR2);
@@ -238,7 +193,6 @@ void alter_num_user(int amount)
 
 void write_user_info(client_pid c)
 {
-// printf("in write user info\n");
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
     memset(shm_addr + c.id*SHM_SIZE +5, '\0', SHM_SIZE);
@@ -246,9 +200,7 @@ void write_user_info(client_pid c)
     char now[SHM_SIZE];
     memset(now, '\0', SHM_SIZE);
     sprintf(now, "%d %d %s %d %s", c.connfd, c.pid, c.addr, c.port, c.name); 
-// printf("write: %s\n",now);
     memcpy(shm_addr + c.id*SHM_SIZE +5, &now, strlen(now));
-
 
     if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
@@ -308,7 +260,6 @@ void update_read_user()
     memcpy(n, shm_addr+5, 4);
     
     int num = atoi(n)+1;
-    
     memset(n ,'\0', 4);
     sprintf(n, "%d", num);
 
