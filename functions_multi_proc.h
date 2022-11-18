@@ -30,12 +30,11 @@
 #define PERMS 0666
 #define SHM_SIZE 100
 
-#define OPEN_MAX 50
-#define MY_LINE_MAX 15005
-#define MSG_MAX 1030
-#define COMMAND_MAX 260
-#define MY_NAME_MAX 25
-#define NUM_USER 30
+#define OPEN_MAX 30 +20
+#define MY_LINE_MAX 15000 +100
+#define MSG_MAX 1024 +100
+#define COMMAND_MAX 256 +50
+#define MY_NAME_MAX 20 +10
 
 struct pnt // pipe number to
 {
