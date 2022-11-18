@@ -33,7 +33,11 @@ int client(int id)
     /* start to execute */
     while (true)
     {
-        if (std::cin.eof()) break;
+        if (std::cin.eof()) 
+        {
+            printf("cin eof\n");
+            break;
+        }
 
         printf("%% "); fflush(stdout);
 
@@ -742,7 +746,7 @@ void sig_cli_chld(int signo)
 void sig_cli_int(int signo)
 {    
     /* disconnection, close by server */  
-printf("in sig cli int\n");
+// printf("in sig cli int\n");
     /* close user FIFO */
     for (auto arg:args_of_cmd)
     {

@@ -9,7 +9,7 @@ int shm_id[3];
 void init()
 {
     /* set user info */
-    shm_key[0] = (key_t)(1234);    
+    shm_key[0] = (key_t)(1453);    
     if ((shm_id[0] = shmget(shm_key[0], SHM_SIZE*OPEN_MAX, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
 
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
@@ -31,7 +31,7 @@ void init()
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
 
     /* set broadcast msg */
-    shm_key[1] = (key_t)(1234+1);    
+    shm_key[1] = (key_t)(1453+1);    
     if ((shm_id[1] = shmget(shm_key[1], MY_LINE_MAX, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
     char *broadcast_shm = (char *)shmat(shm_id[1], 0, 0);
     if (broadcast_shm == NULL) err_sys("shmat fail");
@@ -43,7 +43,7 @@ void init()
     if (shmdt(broadcast_shm) < 0) err_sys("shmdt fail");
 
     /* set user call */
-    shm_key[2] = (key_t)(1234+2);
+    shm_key[2] = (key_t)(1453+2);
     if ((shm_id[2] = shmget(shm_key[2], MSG_MAX+10, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
     char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
     if (msg_shm == NULL) err_sys("shmat fail");
@@ -121,7 +121,6 @@ int handle_new_connection(int &connfd, const int listenfd)
 
 void broadcast(char *msg)
 {
-// printf("in broadcast\n");
     /* broad cast message in share memory */
     
     char *broadcast_addr = (char *)shmat(shm_id[1], 0, 0);
@@ -157,7 +156,6 @@ void broadcast(char *msg)
     
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
     
-// printf("leave broadcast\n");
     return;
 }
 
@@ -273,36 +271,8 @@ int get_shm_num(int s_id)
     return len;
 }
 
-// int sem_create(int index)
-// {
-//     register int id, semval;
-    
-//     sembuf op_lock[2] = 
-//     {
-//         2, 0, 0,
-//         2, 1, SEM_UNDO
-//     };
-
-// again:
-//     if (sem_id[index] = semget(sem_key[index], 3, PERMS | IPC_CREAT) < 0) return -1;
-//     if (semop(sem_id[index], &op_lock[0], 2) < 0)
-//     {
-//         if (errno == EINVAL) goto again;
-        
-//         err_sys("can't lock");
-//     }
-
-//     if ( (semval = semctl(id, 1, GETVAL, 0)) < 0) err_sys("can't GETVAL");
-
-//     if (semval == 0)
-//     {
-//         if (sen)
-//     }
-// }
-
 void err_sys(const char *err)
 {
     perror(err);
     exit(-1);
 }
-
