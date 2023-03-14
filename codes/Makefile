@@ -1,4 +1,9 @@
-TOTAL = functions.o np_simple.o np_single_proc.o rwg.o np_multi_proc.o rwg_multi_proc.o functions_multi_proc.o
+TOTAL = functions.o \
+		np_simple.o \
+		np_single_proc.o \
+		rwg.o np_multi_proc.o \
+		rwg_multi_proc.o \
+		functions_multi_proc.o
 
 server:  $(TOTAL)
 	g++ -o np_simple np_simple.o rwg.o functions.o
