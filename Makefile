@@ -33,4 +33,4 @@ multi_proc_rwg.o: codes/multi_proc_rwg.cpp codes/multi_proc_rwg.h
 
 .PHONY: clean
 clean:
-	-rm $(TOTAL)
+	-rm $(TOTAL) simple_server single_proc_server multi_proc_server
