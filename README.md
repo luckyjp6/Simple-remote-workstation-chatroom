@@ -1,13 +1,17 @@
 # Remote-Working-Ground-Server
-實作了三種不同形式的遠端工作站  
+實作了三種不同形式的遠端工作站（請使用```make```產生三個server的執行檔）  
 ## Concurrent connection-oriented server  
   - 支援單一使用者連線，工作站詳細內容可以參考我的另一個repo：https://github.com/luckyjp6/Shell。  
+  - Usage: ```./simple_server [port]```
+  - 連線方式：```nc [ip] [port]```
   ![image](https://user-images.githubusercontent.com/96563567/225498300-5c16313c-ef90-4342-8a4f-5738c64ccba7.png)  
   
 ## Concurrent single-process server with chat room  
   - 支援多使用者同時連線（實作單一process多使用者server）。  
   - 運用select函數控管新進連線或已存在連線用戶的request。  
-  - 支援聊天室功能，包含更改暱稱、私訊、廣播訊息和傳遞檔案等功能（請參考下方有關聊天室功能的區塊）。  
+  - 支援聊天室功能，包含更改暱稱、私訊、廣播訊息和傳遞檔案等功能（請參考下方有關聊天室功能的區塊）。
+  - Usage ```./single_proc_server [port]```
+  - 連線方式：```nc [ip] [port]```
   
 ## Concurrent multi-process server with chat room  
   - 支援多使用者同時連線（實作multi-process多使用者server）。  
@@ -15,6 +19,8 @@
   - 支援聊天室功能，包含更改暱稱、私訊、廣播訊息和傳遞檔案等功能（請參考下方有關聊天室功能的區塊）。  
   - 運用shared memory處理使用者聊天室訊息。  
   - 運用FIFO處理使用者之間傳遞的檔案。  
+  - Usage ```./multi_proc_server [port]```
+  - 連線方式：```nc [ip] [port]```
   
 ## 聊天室功能
 下面使用三個使用者的情境demo聊天室功能
