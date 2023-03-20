@@ -41,22 +41,21 @@ int main(int argc, char **argv)
 
         if (pid == 0) 
         {
-            // setenv("PATH", "bin:.", 1);
-            // signal(SIGCHLD, sig_cli_chld);
-            // signal(SIGINT, sig_cli_int);
-            // signal(SIGTERM, sig_cli_int);
+            setenv("PATH", "bin:.", 1);
+            signal(SIGCHLD, sig_cli_chld);
+            signal(SIGINT, sig_cli_int);
+            signal(SIGTERM, sig_cli_int);
 
-            // close(listenfd);
+            close(listenfd);
 
-            // for (auto c:cp)
-            // {
-            //     if (c.connfd > 0 && c.connfd != connfd) close(c.connfd);
-            // }
-            // dup2(connfd, STDIN_FILENO);
-            // dup2(connfd, STDOUT_FILENO);
-            // dup2(connfd, STDERR_FILENO);
+            for (auto c:cp)
+            {
+                if (c.connfd > 0 && c.connfd != connfd) close(c.connfd);
+            }
+            dup2(connfd, STDIN_FILENO);
+            dup2(connfd, STDOUT_FILENO);
+            dup2(connfd, STDERR_FILENO);
 
-            printf("rrrrrr\n");
             client(new_id);
 
             exit(0);

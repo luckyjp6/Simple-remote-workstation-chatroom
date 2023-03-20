@@ -9,9 +9,8 @@ int shm_id[3];
 void init()
 {
     /* set user info */
-    shm_key[0] = (key_t)(1453);    
+    shm_key[0] = (key_t)(1453);
     if ((shm_id[0] = shmget(shm_key[0], SHM_SIZE*OPEN_MAX, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
-
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
 
@@ -25,7 +24,7 @@ void init()
     char now[SHM_SIZE];
     memset(now, '\0', SHM_SIZE);
     sprintf(now, "%d %d %s %d %s", -1, -1, "0.0.0.0", -1, "(no name)");
-    for (int i = 0; i < OPEN_MAX; i++)
+    for (int i = 0; i < OPEN_MAX-10; i++)
     {
         memcpy(shm_addr + i*SHM_SIZE+5, now, SHM_SIZE);
     }
@@ -89,9 +88,7 @@ int handle_new_connection(int &connfd, const int listenfd)
 {
     sockaddr_in cliaddr;
     socklen_t clilen = sizeof(cliaddr);
-    
     connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);
-    
     alter_num_user(1);
     
     /* get new client an id */

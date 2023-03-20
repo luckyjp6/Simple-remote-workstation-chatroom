@@ -1,13 +1,21 @@
 TOTAL = functions.o \
 		simple_server.o \
 		single_proc_server.o \
-		rwg.o multi_proc_server.o \
+		rwg.o  \
+		multi_proc_server.o \
 		multi_proc_rwg.o \
-		multi_proc_functions.o
+		multi_proc_functions.o \
+		simple_server \
+		single_proc_server \
+		multi_proc_server
 
-server:  $(TOTAL)
+server: $(TOTAL)
+
+simple_server: simple_server.o functions.o
 	g++ -o simple_server simple_server.o rwg.o functions.o
+single_proc_server: single_proc_server.o rwg.o functions.o
 	g++ -o single_proc_server single_proc_server.o rwg.o functions.o
+multi_proc_server: multi_proc_server.o multi_proc_rwg.o multi_proc_functions.o
 	g++ -o multi_proc_server multi_proc_server.o multi_proc_functions.o multi_proc_rwg.o
 
 simple_server.o: codes/simple_server.cpp
