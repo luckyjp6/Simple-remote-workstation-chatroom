@@ -3,7 +3,7 @@
 ## Concurrent connection-oriented server  
   - 支援單一使用者連線，工作站詳細內容可以參考我的另一個repo：https://github.com/luckyjp6/Shell。  
   - Usage: ```./simple_server [port]```
-  - 連線方式：```nc [ip] [port]```
+  - 連線方式：```nc [ip] [port]```  
   ![image](https://user-images.githubusercontent.com/96563567/225498300-5c16313c-ef90-4342-8a4f-5738c64ccba7.png)  
   
 ## Concurrent single-process server with chat room  
