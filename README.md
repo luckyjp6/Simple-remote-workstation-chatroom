@@ -1,15 +1,39 @@
 # Simple-remote-workstation&chatroom
 A concurrent multi-process server with chat room.
 (整改中)
-## 功能
-  - 支援多使用者同時連線（實作multi-process多使用者server）。  
-  - 為每一位使用者建立一個新的process處理所有request。  
-  - 支援聊天室功能，包含更改暱稱、私訊、廣播訊息和傳遞檔案等功能（請參考下方有關聊天室功能的區塊）。  
-  - 運用shared memory處理使用者聊天室訊息。  
-  - 運用FIFO處理使用者之間傳遞的檔案。  
-  - Usage ```./multi_proc_server [port]```
-  - 連線方式：```nc [ip] [port]```
-  
+## 預計實作功能
+- 支援多使用者同時連線（multi-process的多使用者server）。
+    - Main server：處理新連線請求和使用者聊天訊息。
+    - Data server：處理使用者檔案傳輸。
+- 為每一位使用者建立一個新的process處理所有request。
+    - 與main server建立連線，接收/發送聊天室訊息。
+    - 與Data server建立連線，要求/發送其他使用者傳輸檔案。
+    - 與遠端使用者建立連線，處理使用者發送的指令。
+- 支援簡易Shell功能，包含使用指定資料夾下的指令、pipe、stdin/stdout redirection等（請參考下方Shell功能區塊）。
+- 支援聊天室功能，包含更改暱稱、私訊、廣播訊息和傳遞檔案等功能（請參考下方聊天室功能區塊）。
+- Usage ```./server [port]```
+- 使用nc連線測試server，連線方式：```nc [server ip] [port]```
+
+## Shell功能
+- 內建指令
+  - setenv [var name] [value]：新增或變更環境變數。
+  - printenv [var name]：印出指定環境變數。
+  - exit：離開shell。
+- 指令資料夾下的執行檔
+  - 於開啟server時將指定資料夾路徑作為參數傳入。
+      - e.g., ```./server /usr/bin```.
+  - 使用者只能執行指定資料夾下的指令，不受系統中其他執行檔影響。
+  - Ordinary pipe 
+  - 支援Linux常見的pipe功能。
+      - e.g., ```cat hello.txt | wc```
+- File redirection
+  - 支援Linux常見的stdin redirection功能。
+      - e.g., ```some_execution < preset_input.txt```.
+      - 如檔案不存在，將顯示錯誤訊息。
+  - 支援Linux常見的stdout redirection功能。
+      - e.g., ```cat hello.txt > hello_copy.txt```.
+      - 如檔案已存在，將複寫檔案。
+
 ## 聊天室功能
 下面使用三個使用者的情境demo聊天室功能
 - 歡迎訊息和離開訊息
