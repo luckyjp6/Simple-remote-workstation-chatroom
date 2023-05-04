@@ -1,44 +1,18 @@
-TOTAL = functions.o \
-		simple_server.o \
-		single_proc_server.o \
-		rwg.o  \
-		multi_proc_server.o \
-		multi_proc_rwg.o \
-		multi_proc_functions.o \
-		simple_server \
-		single_proc_server \
-		multi_proc_server
+TOTAL = conn_func.o proc_client.o main_server.o
 
-server: $(TOTAL)
 
-simple_server: simple_server.o functions.o
-	g++ -o simple_server simple_server.o rwg.o functions.o
-single_proc_server: single_proc_server.o rwg.o functions.o
-	g++ -o single_proc_server single_proc_server.o rwg.o functions.o
-multi_proc_server: multi_proc_server.o multi_proc_rwg.o multi_proc_functions.o
-	g++ -o multi_proc_server multi_proc_server.o multi_proc_functions.o multi_proc_rwg.o
+all: $(TOTAL)
+	g++ -o server conn_func.o proc_client.o main_server.o
 
-simple_server.o: codes/simple_server.cpp
-	g++ -c codes/simple_server.cpp
+main_server.o: ./codes/main_server.cpp
+	g++ -c codes/main_server.cpp
 
-single_proc_server.o: codes/single_proc_server.cpp
-	g++ -c codes/single_proc_server.cpp
+conn_func.o: codes/conn_func.cpp codes/conn_func.h
+	g++ -c codes/conn_func.cpp
 
-multi_proc_server.o: codes/multi_proc_server.cpp
-	g++ -c codes/multi_proc_server.cpp
-
-functions.o: codes/functions.cpp codes/functions.h
-	g++ -c codes/functions.cpp
-
-multi_proc_functions.o: codes/multi_proc_functions.cpp codes/multi_proc_functions.h
-	g++ -c codes/multi_proc_functions.cpp
-
-rwg.o: codes/rwg.cpp codes/rwg.h
-	g++ -c codes/rwg.cpp
-
-multi_proc_rwg.o: codes/multi_proc_rwg.cpp codes/multi_proc_rwg.h
-	g++ -c codes/multi_proc_rwg.cpp
+proc_client.o: codes/proc_client.cpp codes/proc_client.h
+	g++ -c codes/proc_client.cpp
 
 .PHONY: clean
 clean:
-	-rm $(TOTAL) simple_server single_proc_server multi_proc_server
+	-rm $(TOTAL) server
