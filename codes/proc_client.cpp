@@ -503,57 +503,57 @@ int check_user_pipe_to(int to, int &u_to, std::string &cmd_line)
 
 void print_all_user()
 {
-    int num_user = get_shm_num(shm_id[0]);
+    // int num_user = get_shm_num(shm_id[0]);
     
-    char snd[MSG_MAX], now[SHM_SIZE];
-    memset(snd, '\0', MSG_MAX);
+    // char snd[MSG_MAX], now[SHM_SIZE];
+    // memset(snd, '\0', MSG_MAX);
     
-    printf("<ID>\t<nickname>\t<IP:port>\t<indicate me>\n");  
+    // printf("<ID>\t<nickname>\t<IP:port>\t<indicate me>\n");  
     
-    for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
-    { 
-        client_pid c(i);
-        read_user_info(c);
-        if (c.connfd < 0) continue;
+    // for (int i = 0; i < NUM_USER && num_user > 0; i++)
+    // { 
+    //     client_pid c(i);
+    //     read_user_info(c);
+    //     if (c.connfd < 0) continue;
 
-        num_user--;
+    //     num_user--;
         
-        printf("%d\t%s\t%s:%d\t%s\n", i+1, c.name, c.addr, c.port, (c.id == me.id)?" <-me":"");
-    }
+    //     printf("%d\t%s\t%s:%d\t%s\n", i+1, c.name, c.addr, c.port, (c.id == me.id)?" <-me":"");
+    // }
 }
 
 void change_name(std::string new_name)
 {
-    int num_user = get_shm_num(shm_id[0]);
+    // int num_user = get_shm_num(shm_id[0]);
 
-    for (int i = 0; i < OPEN_MAX && num_user > 0; i++)
-    {       
-        if (i == me.id) {
-            num_user--;
-            continue; 
-        }
+    // for (int i = 0; i < NUM_USER && num_user > 0; i++)
+    // {       
+    //     if (i == me.id) {
+    //         num_user--;
+    //         continue; 
+    //     }
 
-        client_pid c(i);
-        read_user_info(c);
-        if (c.connfd < 0) continue;
+    //     client_pid c(i);
+    //     read_user_info(c);
+    //     if (c.connfd < 0) continue;
 
-        num_user--;
+    //     num_user--;
         
-        if (strcmp(c.name, new_name.c_str()) == 0) 
-        {
-            printf("*** User '%s' already exists. ***\n", new_name.data());
-            return;
-        }
-    }
+    //     if (strcmp(c.name, new_name.c_str()) == 0) 
+    //     {
+    //         printf("*** User '%s' already exists. ***\n", new_name.data());
+    //         return;
+    //     }
+    // }
     
-    read_user_info(me);
-    strcpy(me.name, new_name.c_str());
-    write_user_info(me);
+    // read_user_info(me);
+    // strcpy(me.name, new_name.c_str());
+    // write_user_info(me);
     
-    char snd[MSG_MAX], now[SHM_SIZE];
-    memset(snd, '\0', MSG_MAX);
-    sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", me.addr, me.port, me.name);
-    broadcast(snd);
+    // char snd[MSG_MAX], now[SHM_SIZE];
+    // memset(snd, '\0', MSG_MAX);
+    // sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", me.addr, me.port, me.name);
+    // broadcast(snd);
 }
 
 int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
@@ -746,7 +746,7 @@ void sig_cli_chld(int signo)
 void sig_cli_int(int signo)
 {    
     /* disconnection, close by server */  
-// printf("in sig cli int\n");
+    
     /* close user FIFO */
     for (auto arg:args_of_cmd)
     {
@@ -761,55 +761,55 @@ void sig_cli_int(int signo)
 
 void sig_tell(int signo)
 {
-    char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
-    if (msg_shm == NULL) err_sys("shmat fail");
+    // char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
+    // if (msg_shm == NULL) err_sys("shmat fail");
     
-    int len = get_shm_num(shm_id[2]);
-    char msg[MSG_MAX];
-    memset(msg, '\0', MSG_MAX);
-    memcpy(msg, msg_shm+5, len);
+    // int len = get_shm_num(shm_id[2]);
+    // char msg[MSG_MAX];
+    // memset(msg, '\0', MSG_MAX);
+    // memcpy(msg, msg_shm+5, len);
     
-    char nn[4]; 
-    sprintf(nn, "%d", 0);
-    memcpy(msg_shm, nn, 4);
+    // char nn[4]; 
+    // sprintf(nn, "%d", 0);
+    // memcpy(msg_shm, nn, 4);
 
-    if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
+    // if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
 
-    printf("%s\n", msg); fflush(stdout);
+    // printf("%s\n", msg); fflush(stdout);
     
-    return;
+    // return;
 }
 
 void sig_broadcast(int signo)
 {
-    char *shm_addr = (char *)shmat(shm_id[1], 0, 0);
-    if (shm_addr == NULL) err_sys("shmat fail");
+    // char *shm_addr = (char *)shmat(shm_id[1], 0, 0);
+    // if (shm_addr == NULL) err_sys("shmat fail");
 
-    int msg_len = get_shm_num(shm_id[1]);
-    char msg[SHM_SIZE];
-    memcpy(msg, shm_addr+5, msg_len+1);
+    // int msg_len = get_shm_num(shm_id[1]);
+    // char msg[SHM_SIZE];
+    // memcpy(msg, shm_addr+5, msg_len+1);
     
-    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
+    // if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
 
-    printf("%s", msg);fflush(stdout);
+    // printf("%s", msg);fflush(stdout);
 
-    std::string f(msg);
-    // printf("msg: %s, just piped at: %ld\n", msg, f.find("just piped"));
-    int jp = f.find("just piped");
-    if (jp > 0) 
-    {
-        char one[3] = "(#", mm[10];
-        sprintf(mm, "(#%d)", me.id+1);
-        int oo = f.find(one), tt = f.find(mm);
-        if (oo > 0 && tt > 0 && oo != tt) 
-        {
-            char char_f[4];
-            int from;
-            memcpy(char_f, msg + oo + 2, 4);
-            from = atoi(char_f);
-            FIFO_read(from-1);
-        }
-    }
+    // std::string f(msg);
+    // // printf("msg: %s, just piped at: %ld\n", msg, f.find("just piped"));
+    // int jp = f.find("just piped");
+    // if (jp > 0) 
+    // {
+    //     char one[3] = "(#", mm[10];
+    //     sprintf(mm, "(#%d)", me.id+1);
+    //     int oo = f.find(one), tt = f.find(mm);
+    //     if (oo > 0 && tt > 0 && oo != tt) 
+    //     {
+    //         char char_f[4];
+    //         int from;
+    //         memcpy(char_f, msg + oo + 2, 4);
+    //         from = atoi(char_f);
+    //         FIFO_read(from-1);
+    //     }
+    // }
 }
 
 void FIFO_read(int from)

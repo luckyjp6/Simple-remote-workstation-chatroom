@@ -21,7 +21,26 @@ struct args{
 	int to = -1, from = -1;
 };
 
+struct pipe_info
+{
+    int pipe_num = -1;
+    std::string command;
+
+    void reset()
+    {
+        pipe_num = -1;
+        command = "";
+    }
+
+    void set(int p, std::string c)
+    {
+        pipe_num = p;
+        command = c;
+    }
+};
+
 extern client_pid me;
+extern pipe_info user_pipe[NUM_USER][NUM_USER];
 
 int to_client(int id);
 int execute_line(char *line);

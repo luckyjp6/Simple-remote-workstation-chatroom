@@ -8,6 +8,7 @@ A concurrent multi-process server with chat room.
 - 為每一位使用者建立一個新的process處理所有request。
     - 與main server建立連線，接收/發送聊天室訊息。
     - 與Data server建立連線，要求/發送其他使用者傳輸檔案。
+        - 獨立data server是為了程序能同時支援服務器正常運行和大型檔案傳輸
     - 與遠端使用者建立連線，處理使用者發送的指令。
 - 支援簡易Shell功能，包含使用指定資料夾下的指令、pipe、stdin/stdout redirection等（請參考下方Shell功能區塊）。
 - 支援聊天室功能，包含更改暱稱、私訊、廣播訊息和傳遞檔案等功能（請參考下方聊天室功能區塊）。

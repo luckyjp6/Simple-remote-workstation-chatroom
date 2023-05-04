@@ -30,7 +30,6 @@
 #define PERMS 0666
 #define SHM_SIZE 100
 
-#define OPEN_MAX 30 +20
 #define MY_LINE_MAX 15000 +100
 #define MSG_MAX 1024 +100
 #define COMMAND_MAX 256 +50
@@ -89,6 +88,7 @@ struct client_pid
 
 struct Client_info 
 {
+    int ID;
     int connfd = -1;
     char addr[20];
     uint16_t port;
@@ -109,46 +109,22 @@ struct Client_info
         pipe_num_to.clear();
     }
 
-    void set(int fd, sockaddr_in add)
+    void set(int id, sockaddr_in add)
     {
-        connfd = fd;
+        ID = id;
         strcpy(addr, inet_ntoa(add.sin_addr));
         port = ntohs(add.sin_port);
     }
 }; 
 
-struct pipe_info
-{
-    int pipe_num = -1;
-    std::string command;
 
-    void reset()
-    {
-        pipe_num = -1;
-        command = "";
-    }
 
-    void set(int p, std::string c)
-    {
-        pipe_num = p;
-        command = c;
-    }
-};
+extern client_pid cp[NUM_USER];
 
-extern client_pid cp[OPEN_MAX];
 
-extern int maxi;
-extern Client_info client[OPEN_MAX];
+int init(char *msg_port);
 
-extern int maxfd;
-extern fd_set afds, rfds;
-
-extern pipe_info user_pipe[NUM_USER][NUM_USER];
-extern key_t shm_key[3]; // user data, broadcast
-extern int shm_id[3];
-void init();
-
-int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
+void my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
 int handle_new_connection(int &connfd, const int listenfd);
 
 void close_client(int index);
