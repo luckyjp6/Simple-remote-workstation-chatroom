@@ -3,21 +3,63 @@
 
 client_pid cp[NUM_USER];
 
-int init(char *msg_port)
+key_t shm_key[3]; // user data, broadcast
+int shm_id[3];
+
+void init()
 {
+    /* set user info */
+    shm_key[0] = (key_t)(1453);
+    if ((shm_id[0] = shmget(shm_key[0], SHM_SIZE*NUM_USER, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
+    char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
+    if (shm_addr == NULL) err_sys("shmat fail");
+
+    memset(shm_addr, '\0', SHM_SIZE*NUM_USER);
+
+    char n[4];
+    memset(n, '\0', 4);
+    sprintf(n, "%d", 0);
+    memcpy(shm_addr, n, 4);
+
+    char now[SHM_SIZE];
+    memset(now, '\0', SHM_SIZE);
+    sprintf(now, "%d %d %s %d %s", -1, -1, "0.0.0.0", -1, "(no name)");
+    for (int i = 0; i < NUM_USER-10; i++)
+    {
+        memcpy(shm_addr + i*SHM_SIZE+5, now, SHM_SIZE);
+    }
+
+    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
+
+    /* set broadcast msg */
+    shm_key[1] = (key_t)(1453+1);    
+    if ((shm_id[1] = shmget(shm_key[1], MY_LINE_MAX, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
+    char *broadcast_shm = (char *)shmat(shm_id[1], 0, 0);
+    if (broadcast_shm == NULL) err_sys("shmat fail");
+
+    memset(broadcast_shm, '\0', MY_LINE_MAX);
+    
+    memcpy(broadcast_shm, n, 4);
+    
+    if (shmdt(broadcast_shm) < 0) err_sys("shmdt fail");
+
+    /* set user call */
+    shm_key[2] = (key_t)(1453+2);
+    if ((shm_id[2] = shmget(shm_key[2], MSG_MAX, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
+    char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
+    if (msg_shm == NULL) err_sys("shmat fail");
+
+    memset(msg_shm, '\0', MSG_MAX);
+    
+    memcpy(msg_shm, n, 4);
+    
+    if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
+
     /* clear client-pid */
     for (int i = 0; i < NUM_USER; i++) cp[i].reset(i);
-
-    int pid = fork();
-    if (pid == 0) {
-        execl("msg_server", msg_port, NULL);
-        
-        err_sys("exec msg_server failed");
-    }
-    else return pid;
 }
 
-void my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
+int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
 {
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     int reuse = 1;
@@ -33,13 +75,16 @@ void my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
 	while (bind(listenfd, (const sockaddr *) &servaddr, sizeof(servaddr)) < 0) 
     {
         if (errno == EINTR) continue;
-		err_sys("failed to bind");
+		printf("failed to bind\n");
+		return 0;
 	}
 
 	listen(listenfd, 1024);
+
+    return 1;
 }
 
-int handle_new_connection(int &connfd, const int listenfd, int server_id )
+int handle_new_connection(int &connfd, const int listenfd)
 {
     sockaddr_in cliaddr;
     socklen_t clilen = sizeof(cliaddr);
@@ -59,7 +104,7 @@ int handle_new_connection(int &connfd, const int listenfd, int server_id )
     
     if (new_id < 0) 
     {
-        err_sys("too many clients");
+        printf("too many clients\n");
         return -1;
     }
 
@@ -96,10 +141,10 @@ void broadcast(char *msg)
         
         num_user--;
         
-        if (kill(c.pid, SIGUSR1) < 0)
-        {
-            err_sys("signal haven't been init\n");
-        }
+        // if (kill(c.pid, SIGUSR1) < 0)
+        // {
+        //     err_sys("signal haven't been init\n");
+        // }
     }
     
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
@@ -173,7 +218,7 @@ void alter_num_user(int amount)
 
 void write_user_info(client_pid c)
 {
-    
+// printf("in write user info\n");
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
     memset(shm_addr + c.id*SHM_SIZE +5, '\0', SHM_SIZE);
@@ -181,7 +226,7 @@ void write_user_info(client_pid c)
     char now[SHM_SIZE];
     memset(now, '\0', SHM_SIZE);
     sprintf(now, "%d %d %s %d %s", c.connfd, c.pid, c.addr, c.port, c.name); 
-    
+// printf("write: %s\n",now);
     memcpy(shm_addr + c.id*SHM_SIZE +5, &now, strlen(now));
 
 
@@ -223,5 +268,5 @@ int get_shm_num(int s_id)
 void err_sys(const char *err)
 {
     perror(err);
-    exit(EXIT_FAILURE);
+    exit(-1);
 }

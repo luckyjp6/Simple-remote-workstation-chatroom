@@ -35,6 +35,7 @@
 #define COMMAND_MAX 256 +50
 #define MY_NAME_MAX 20 +10
 #define NUM_USER 30
+#define MAX_USER 30
 
 struct pnt // pipe number to
 {
@@ -62,6 +63,7 @@ struct client_pid
     client_pid (int i) {id = i;}
 
     void reset(int i)
+    // void reset()
     {
         id = i;
         connfd = -1;
@@ -120,11 +122,12 @@ struct Client_info
 
 
 extern client_pid cp[NUM_USER];
+extern key_t shm_key[3]; // user data, broadcast
+extern int shm_id[3];
 
+void init();
 
-int init(char *msg_port);
-
-void my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
+int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
 int handle_new_connection(int &connfd, const int listenfd);
 
 void close_client(int index);
