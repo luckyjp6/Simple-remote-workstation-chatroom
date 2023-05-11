@@ -6,10 +6,8 @@ void sig_int(int signo);
 
 int maxi = 0;
 
-int main(int argc, char **argv)
-{
-	if (argc < 2) 
-    {
+int main(int argc, char **argv) {
+	if (argc < 2) {
         printf("Usage: ./a.out [port]\n");
         return -1;
     }
@@ -22,23 +20,19 @@ int main(int argc, char **argv)
     init();
     setenv("PATH", ".", 1);
     signal(SIGCHLD, sig_chld); // handle close connection
-    signal(SIGUSR1, sig_broadcast); // handle broadcast
-    signal(SIGUSR2, sig_tell); // handle tell
     signal(SIGINT,  sig_int); // handle server termination
     signal(SIGTERM,  sig_int); // handle server termination
 
     if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
 
-	for ( ; ; ) 
-    {
+	for ( ; ; ) {
         int new_id = handle_new_connection(connfd, listenfd);
         if (new_id >= maxi) maxi = new_id+1;
         
         int pid = fork();
-
         if (pid == 0) 
         {
-            setenv("PATH", "bin:.", 1);
+            // setenv("PATH", "bin:.", 1);
             signal(SIGCHLD, sig_cli_chld);
             signal(SIGINT, sig_cli_int);
             signal(SIGTERM, sig_cli_int);
@@ -53,6 +47,11 @@ int main(int argc, char **argv)
             dup2(connfd, STDOUT_FILENO);
             dup2(connfd, STDERR_FILENO);
             
+            /* set root dir */
+            set_root_dir(cp[new_id].name);
+            /* set user id */
+            if (setuid(cp[new_id].uid) < 0) err_sys("setuid");
+            
             to_client(new_id);
             
             exit(0);
@@ -63,16 +62,15 @@ int main(int argc, char **argv)
             cp[new_id].set(pid);
             write_user_info(cp[new_id]);
             printf("new client!! pid: %d, id: %d\n", pid, new_id);
-        }
-	}
+        }   
+    }
     /* parent closes connected socket */
     close(listenfd);
 
     return 0;
 }
 
-void sig_chld(int signo)
-{
+void sig_chld(int signo) {
 	int	pid, stat;
 
 	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0){
@@ -89,8 +87,8 @@ void sig_chld(int signo)
 	return;
 }
 
-void sig_int(int signo) /* server terminate by terminal ctrl +c */
-{
+void sig_int(int signo)  {
+    /* server terminate by terminal ctrl +c */
     printf("in sig_int, maxi = %d\n", maxi);
 
     /* kill all children */

@@ -25,6 +25,7 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include <sys/epoll.h>
 
 #define SEM_FOLDER "./shm"
 #define PERMS 0666
@@ -36,6 +37,7 @@
 #define MY_NAME_MAX 20 +10
 #define NUM_USER 30
 #define MAX_USER 30
+#define MAX_EVENT MAX_USER*2
 
 struct pnt // pipe number to
 {
@@ -52,8 +54,8 @@ struct pnt // pipe number to
 struct client_pid
 {
     int id;
-    int connfd = -1;
-    int pid;
+    int uid, pid;
+    int connfd = -1, request = -1, msg = -1;
     char name[MY_NAME_MAX];
     char addr[20];
     int port;
@@ -63,11 +65,10 @@ struct client_pid
     client_pid (const char *n) {strcpy(name, n);}
 
     void reset(int i)
-    // void reset()
     {
         id = i;
-        connfd = -1;
-        pid = -1;
+        uid = -1; pid = -1;
+        connfd = -1; request = -1; msg = -1;
         strcpy(name, "(no name)");
         strcpy(addr, "0.0.0.0");
         port = -1;
@@ -86,6 +87,9 @@ struct client_pid
     }
 };
 
+extern int maxi;
+extern int epollfd;
+
 extern client_pid cp[NUM_USER];
 extern key_t shm_key[3]; // user data, broadcast
 extern int shm_id[3];
@@ -94,11 +98,9 @@ void init();
 
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
 int handle_new_connection(int &connfd, const int listenfd);
-bool check_usr_exist(char *name);
+int check_usr_exist(char *name);
 
 void close_client(int index);
-void broadcast(char *msg);
-void tell(char *msg, int to);
 
 void alter_num_user(int amount);
 void write_user_info(client_pid c);

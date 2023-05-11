@@ -1,13 +1,15 @@
 #include "conn_func.h"
 #include "proc_client.h"
+#include <pwd.h>
+#include <grp.h>
 
 client_pid cp[NUM_USER];
 
 key_t shm_key[3]; // user data, broadcast
 int shm_id[3];
+int server_gid = -1;
 
-void init()
-{
+void init() {
     /* set user info */
     shm_key[0] = (key_t)(1453);
     if ((shm_id[0] = shmget(shm_key[0], SHM_SIZE*NUM_USER, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
@@ -57,10 +59,18 @@ void init()
 
     /* clear client-pid */
     for (int i = 0; i < NUM_USER; i++) cp[i].reset(i);
+
+    /* check group exist */
+    group* grp = getgrnam("worm_server");
+    if (grp == nullptr) {
+        char err_msg[] = "Please create a group named worm_server\n";
+        write(2, err_msg, strlen(err_msg));
+        exit(-1);
+    }
+    server_gid = grp->gr_gid;
 }
 
-int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
-{
+int my_connect(int &listenfd, char *port, sockaddr_in &servaddr) {
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     int reuse = 1;
     int buf_size = MY_LINE_MAX;
@@ -84,8 +94,7 @@ int my_connect(int &listenfd, char *port, sockaddr_in &servaddr)
     return 1;
 }
 
-int handle_new_connection(int &connfd, const int listenfd)
-{
+int handle_new_connection(int &connfd, const int listenfd) {
     sockaddr_in cliaddr;
     socklen_t clilen = sizeof(cliaddr);
     connfd = accept(listenfd, (sockaddr *) &cliaddr, &clilen);
@@ -103,8 +112,9 @@ int handle_new_connection(int &connfd, const int listenfd)
 
     /* check valid user */
     char name[MY_LINE_MAX];
-    bool log_in = false;
-    while (!log_in) {
+    memset(name, 0, MY_LINE_MAX);
+    cp[new_id].uid = -1;
+    while (cp[new_id].uid < 0) {
         write(connfd, "User name: ", strlen("User name: ")); fflush(stdout);
         read(connfd, name, MY_NAME_MAX);
         
@@ -114,7 +124,7 @@ int handle_new_connection(int &connfd, const int listenfd)
         if (name_s.size() > MY_NAME_MAX) name_s = name_s.substr(0, MY_NAME_MAX);
 
         strcpy(cp[new_id].name, name_s.c_str());
-        log_in = check_usr_exist(cp[new_id].name);
+        cp[new_id].uid = check_usr_exist(cp[new_id].name);
     }
 
     alter_num_user(1);
@@ -123,93 +133,48 @@ int handle_new_connection(int &connfd, const int listenfd)
     return new_id;
 }
 
-bool check_usr_exist(char *name) {
-    int fd = open("./usr_list", O_RDONLY);
-    if (fd < 0) err_sys("open usr_list");
-    
-    const size_t names_len = (MY_NAME_MAX+1)*NUM_USER+5;
-    char *n, *now_at, names[MY_LINE_MAX] = {0};
-    read(fd, names, MY_LINE_MAX);
-
-    size_t name_len = strlen(name);
-    n = names;
-    while(now_at = strtok_r(n, ";", &n)) {
-        if (strlen(now_at) != name_len) continue;
-        if (strcmp(now_at, name)) continue;
-        close(fd);
-        return true;
+int check_usr_exist(char *name) {
+    struct passwd* pw = getpwnam(name);
+    if (pw != nullptr) {
+        // std::cout << "UID for user " << name << " is " << pw->pw_uid << std::endl;
+        if (pw->pw_gid != server_gid) return -1;
+        return pw->pw_uid;
+    } else {
+        // std::cerr << "User " << name << " not found" << std::endl;
+        return -1;
     }
-    close(fd);
-    return false;
 }
 
-void broadcast(char *msg)
-{
-    /* broad cast message in share memory */
-    char *broadcast_addr = (char *)shmat(shm_id[1], 0, 0);
-    if (broadcast_addr == NULL) err_sys("shmat fail");
-    memset(broadcast_addr, '\0', MY_LINE_MAX);
+void set_root_dir(char *name) {
+    char root_path[MY_LINE_MAX];
+    char home_path[MY_LINE_MAX];
+    // printf("cwd: %s\n", getcwd(NULL, 0)); fflush(stdout);
+    sprintf(home_path, "/home/%s", name);
+    sprintf(root_path, "%s/user_space", getcwd(NULL, 0));
+    // printf("root path: %s##\n", root_path); fflush(stdout);
+    // printf("home path: %s##\n", home_path); fflush(stdout);
     
-    char nn[4]; 
-    memset(nn, '\0', 4);
-    sprintf(nn, "%d", (int)strlen(msg));
-    memcpy(broadcast_addr, nn, 4);
-    memcpy(broadcast_addr+5, msg, strlen(msg));
-    if (shmdt(broadcast_addr) < 0) err_sys("shmdt fail");
 
-    /* send signal to each client */
-    int num_user = get_shm_num(shm_id[0]);
+    if (chdir(root_path) < 0) err_sys("chdir");
+    if (chroot(root_path) < 0) err_sys("chroot");
+    if (chdir(home_path) < 0) err_sys("chdir");
 
-    char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
-    if (shm_addr == NULL) err_sys("shmat fail");    
-    char now[SHM_SIZE];
-    
-    for (int i = 0; i < NUM_USER && num_user > 0; i++)
-    {
-        client_pid c;
-        if (!read_user_info(c, i)) continue;
-        
-        num_user--;
-        
-        if (kill(c.pid, SIGUSR1) < 0)
-        {
-            err_sys("signal haven't been init\n");
-        }
-    }
-    
-    if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
-    
-    return;
-}
+    setenv("PATH", "/bin", 1);
+    // printf("bin path: %s\n", bin_path);
+    // printf("now path: %s\n", getcwd(NULL, 0));    
+    // fflush(stdout);
+}   
 
-void tell(char *msg, int to)
-{
-    char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
-    if (msg_shm == NULL) err_sys("shmat fail");
-    
-    int len = 1;
-    while (get_shm_num(shm_id[2])> 0);
-
-    memset(msg_shm, '\0', MSG_MAX+10);
-
-    char nn[4]; 
-    memset(nn, '\0', 4);
-    sprintf(nn, "%d", (int)strlen(msg));
-    memcpy(msg_shm, nn, 4);
-    memcpy(msg_shm+5, msg, strlen(msg));
-    if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
-
-    /* send signal to each client */
-    kill(to, SIGUSR2);
-    
-    return;
-}
-
-void close_client(int index) 
-{    
+void close_client(int index) {    
     if (cp[index].connfd > 0)
     {
+        epoll_event ev;
+        ev.data.fd = cp[index].request;
+        // if (epoll_ctl(epollfd, EPOLL_CTL_DEL, cp[index].request, &ev) < 0) err_sys("epoll_ctl: msg");
         close(cp[index].connfd);
+        close(cp[index].msg);
+        close(cp[index].request);
+
         alter_num_user(-1);
 
         read_user_info(cp[index], index);
@@ -221,15 +186,12 @@ void close_client(int index)
         /* release client id */
         cp[index].reset(index);
         write_user_info(cp[index]);
-
-        broadcast(msg);
         
         printf("goodbye\n");
     }
 }
 
-void alter_num_user(int amount)
-{
+void alter_num_user(int amount) {
     int num_user = get_shm_num(shm_id[0]);
     num_user += amount;
 
@@ -244,8 +206,7 @@ void alter_num_user(int amount)
     if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
 
-void write_user_info(client_pid c)
-{
+void write_user_info(client_pid c) {
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
     memset(shm_addr + c.id*SHM_SIZE +5, '\0', SHM_SIZE);
@@ -259,8 +220,7 @@ void write_user_info(client_pid c)
     if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
 
-bool read_user_info(client_pid &c, int id)
-{
+bool read_user_info(client_pid &c, int id) {
     int num_user = get_shm_num(shm_id[0]);
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
@@ -326,8 +286,7 @@ bool format_user_info(char *row_data, client_pid &c) {
     return true;
 }
 
-int get_shm_num(int s_id)
-{
+int get_shm_num(int s_id) {
     char *shm_addr = (char *)shmat(s_id, 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");
 
@@ -340,8 +299,7 @@ int get_shm_num(int s_id)
     return len;
 }
 
-void err_sys(const char *err)
-{
+void err_sys(const char *err) {
     perror(err);
     exit(-1);
 }

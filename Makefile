@@ -28,6 +28,10 @@ proc_client.o: codes/proc_client.cpp codes/proc_client.h
 # button: codes/button.cpp
 # 	g++ codes/button.cpp -o button
 
+test: codes/test.cpp
+	g++ -o test codes/test.cpp
+	sudo ./test
+
 .PHONY: clean
 clean:
 	-rm $(TOTAL) server 
