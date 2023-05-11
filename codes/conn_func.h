@@ -54,13 +54,13 @@ struct client_pid
     int id;
     int connfd = -1;
     int pid;
-    char **argv;
     char name[MY_NAME_MAX];
     char addr[20];
     int port;
     
     client_pid () {};
     client_pid (int i) {id = i;}
+    client_pid (const char *n) {strcpy(name, n);}
 
     void reset(int i)
     // void reset()
@@ -68,16 +68,14 @@ struct client_pid
         id = i;
         connfd = -1;
         pid = -1;
-        argv = NULL;
         strcpy(name, "(no name)");
         strcpy(addr, "0.0.0.0");
         port = -1;
     }
 
-    void set(int p, char **a)
+    void set(int p)
     {
         pid = p;
-        argv = a;
     }
 
     void setaddr(int fd, sockaddr_in a)
@@ -88,39 +86,6 @@ struct client_pid
     }
 };
 
-struct Client_info 
-{
-    int ID;
-    int connfd = -1;
-    char addr[20];
-    uint16_t port;
-    char name[MY_NAME_MAX+5];
-    std::map<std::string, std::string> env;
-    std::vector<pnt> pipe_num_to; // pipe_num, counter   
-
-    void reset()
-    {
-        if (connfd >= 0) close(connfd);
-        connfd = -1;
-        
-        strcpy(name, "(no name)");
-        
-        env.clear();
-        env["PATH"] = "bin:.";
-
-        pipe_num_to.clear();
-    }
-
-    void set(int id, sockaddr_in add)
-    {
-        ID = id;
-        strcpy(addr, inet_ntoa(add.sin_addr));
-        port = ntohs(add.sin_port);
-    }
-}; 
-
-
-
 extern client_pid cp[NUM_USER];
 extern key_t shm_key[3]; // user data, broadcast
 extern int shm_id[3];
@@ -129,6 +94,7 @@ void init();
 
 int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
 int handle_new_connection(int &connfd, const int listenfd);
+bool check_usr_exist(char *name);
 
 void close_client(int index);
 void broadcast(char *msg);
@@ -136,7 +102,8 @@ void tell(char *msg, int to);
 
 void alter_num_user(int amount);
 void write_user_info(client_pid c);
-void read_user_info(client_pid &c);
+bool read_user_info(client_pid &c, int id);
+bool format_user_info(char *row_data, client_pid &c);
 int get_shm_num(int s_id);
 int get_read_user();
 void update_read_user();

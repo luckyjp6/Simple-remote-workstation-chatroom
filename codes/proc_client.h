@@ -43,7 +43,6 @@ extern client_pid me;
 extern pipe_info user_pipe[NUM_USER][NUM_USER];
 
 int to_client(int id);
-bool check_usr_exist(char *name);
 void set_root_dir(char *name);
 
 int execute_line(char *line);

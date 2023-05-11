@@ -34,9 +34,6 @@ int main(int argc, char **argv)
         int new_id = handle_new_connection(connfd, listenfd);
         if (new_id >= maxi) maxi = new_id+1;
         
-        
-
-        char **cli_argv = (char**) malloc(sizeof(char*)*2);
         int pid = fork();
 
         if (pid == 0) 
@@ -63,7 +60,7 @@ int main(int argc, char **argv)
         }
         else
         {
-            cp[new_id].set(pid, cli_argv);
+            cp[new_id].set(pid);
             write_user_info(cp[new_id]);
             printf("new client!! pid: %d, id: %d\n", pid, new_id);
         }
@@ -83,9 +80,7 @@ void sig_chld(int signo)
         {
             if (pid == cp[i].pid)
             {
-                free(cp[i].argv);
-                close_client(i);
-                
+                close_client(i);                
                 return;
             }
         }

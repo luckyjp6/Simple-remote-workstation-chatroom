@@ -13,20 +13,12 @@ int FIFO_open[30];
 
 char home_path[MY_NAME_MAX+10];
 
+bool print_prefix = false;
+
 int to_client(int id)
 {
     /* get connection info */
     me = cp[id];
-    bool log_in = false;
-    while (!log_in) {
-        char *n_no_next_line, *name;
-        printf("User name: "); fflush(stdout);
-        read(STDIN_FILENO, me.name, MY_NAME_MAX);
-        name = me.name;
-        n_no_next_line = strtok_r(name, "\n", &name);
-        strcpy(me.name, n_no_next_line);
-        log_in = check_usr_exist(me.name);
-    }
 
     /* set root dir */
     set_root_dir(me.name);
@@ -37,21 +29,22 @@ int to_client(int id)
     args_of_cmd.clear();
     clear_tmp();
     pipe_num_to.clear();
-    
-    /* show welcome message */
-    printf("\
-****************************\n\
-   Hi! %s~\n\
-   Welcome back.\n\
-****************************\n", me.name);    
-    fflush(stdout);
 
     /* broadcast message */
-    char msg[MSG_MAX];
-    memset(msg, '\0', MSG_MAX);
-    sprintf(msg, "*** User '%s' entered from %s:%d. ***\n", me.name, me.addr, me.port);
-    broadcast(msg);
-    
+    // char msg[MSG_MAX];
+    // memset(msg, '\0', MSG_MAX);
+    // sprintf(msg, "\b\b*** User '%s' jump into the server. ***\n", me.name);
+    // broadcast(msg);
+        
+    /* show welcome message */
+    printf("\
+***********************************************\n\
+   Hi! %s~\n\
+   Welcome back.\n\
+   # of online users: %d\n\
+***********************************************\n", me.name, get_shm_num(shm_id[0]));
+    fflush(stdout);
+
 
     /* start to execute */
     while (true)
@@ -62,7 +55,8 @@ int to_client(int id)
             break;
         }
 
-        printf("%% "); fflush(stdout);
+        if (!print_prefix) {printf("%% "); fflush(stdout);}
+        else print_prefix = false;
 
         char buf[MY_LINE_MAX];
         memset(buf, '\0', MY_LINE_MAX);
@@ -85,32 +79,12 @@ int to_client(int id)
     return 0;
 }
 
-bool check_usr_exist(char *name) {
-    int fd = open("./usr_list", O_RDONLY);
-    if (fd < 0) err_sys("open usr_list");
-    
-    const size_t names_len = (MY_NAME_MAX+1)*NUM_USER+5;
-    char *n, *now_at, names[MY_LINE_MAX] = {0};
-    read(fd, names, MY_LINE_MAX);
-
-    size_t name_len = strlen(name);
-    n = names;
-    while(now_at = strtok_r(n, ";", &n)) {
-        if (strlen(now_at) != name_len) {printf("len\n");continue;}
-        if (strcmp(now_at, name)) {printf("not equal");continue;}
-        close(fd);
-        return true;
-    }
-    close(fd);
-    return false;
-}
-
 void set_root_dir(char *name) {
     char root_path[MY_LINE_MAX];
     // printf("cwd: %s\n", getcwd(NULL, 0)); fflush(stdout);
     sprintf(home_path, "/home/%s", name);
     sprintf(root_path, "%s/user_space", getcwd(NULL, 0));
-    printf("root path: %s##\n", root_path); fflush(stdout);
+    // printf("root path: %s##\n", root_path); fflush(stdout);
     
 
     if (chdir(root_path) < 0) err_sys("chdir");
@@ -187,20 +161,23 @@ int execute_command(my_cmd &command)
     {
         if (command.argv.size() < 3) printf("Usage: tell <to whom> <msg>\n");
         else {
-            int to = atoi(command.argv[1].data())-1;
+            // int to = atoi(command.argv[1].data())-1;
+            const char *to = command.argv[1].c_str();
 
-            if (to < 0) {
-                printf("*** Error: user #%d does not exist yet. ***\n", to+1);
+            // if (to < 0) {
+            if (strlen(to) > MY_NAME_MAX) {
+                printf("*** Error: Invalid user name ***\n");
+                // printf("*** Error: user #%d does not exist yet. ***\n", to+1);
                 return 0;
             }
             client_pid t(to);
-            read_user_info(t);
+            if (!read_user_info(t, -1)) printf("*** Error: user %s does not exist yet. ***\n", to);
                    
-            if (t.connfd < 0) printf("*** Error: user #%d does not exist yet. ***\n", to+1);
+            // if (t.connfd < 0) printf("*** Error: user #%d does not exist yet. ***\n", to+1);
             else {
                 char msg[MSG_MAX+100];
                 sprintf(msg, "*** %s told you ***: %s", me.name, command.argv[2].data());
-                tell(msg, to);
+                tell(msg, t.pid);
             }
         }
         return 0;
@@ -218,13 +195,6 @@ int execute_command(my_cmd &command)
 
         return 0;
     }
-    // if (command.argv[0] == "name")
-    // {
-    //     if (command.argv.size() < 2) printf("Usage: name <name>\n");
-    //     else change_name(command.argv[1]);
-
-    //     return 0;
-    // }
 
     args cmd;
     cmd.argc = command.argv.size();
@@ -246,45 +216,44 @@ int execute_command(my_cmd &command)
     }
 
     // received data from user pipe
-    int from = command.user_pipe_from;
-    if (from >= 0)
-    {
-        u_pipe_from = true;
+    // int from = command.user_pipe_from;
+    // if (from >= 0)
+    // {
+    //     u_pipe_from = true;
 
-        if (check_user_pipe_from(from, u_from) < 0) u_from = open("/dev/null", O_RDONLY);
-        else 
-        {
-            std::string cmd_line = command.user_pipe_command;
+    //     if (check_user_pipe_from(from, u_from) < 0) u_from = open("/dev/null", O_RDONLY);
+    //     else 
+    //     {
+    //         std::string cmd_line = command.user_pipe_command;
             
-            char msg[MY_LINE_MAX +50];
-            memset(msg, '\0', MY_LINE_MAX+50);
+    //         char msg[MY_LINE_MAX +50];
+    //         memset(msg, '\0', MY_LINE_MAX+50);
 
-            client_pid c(from);
-            read_user_info(c);
+    //         client_pid c(from);
+    //         read_user_info(c);
             
-            cmd_line.erase(cmd_line.end()-1);
-            sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", me.name, me.id+1, c.name, from+1, cmd_line.data());
-            broadcast(msg);
+    //         cmd_line.erase(cmd_line.end()-1);
+    //         sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", me.name, me.id+1, c.name, from+1, cmd_line.data());
+    //         broadcast(msg);
 
-            cmd.from = from;
-        }
+    //         cmd.from = from;
+    //     }
 
         
-    }
+    // }
 
     // user pipe to other user
-    
-    int to = command.user_pipe_to;
-    if (to >= 0)
-    {
-        u_pipe_to = true;
+    // int to = command.user_pipe_to;
+    // if (to >= 0)
+    // {
+    //     u_pipe_to = true;
 
-        if (check_user_pipe_to(to, u_to, command.user_pipe_command) < 0) u_to = open("/dev/null", O_WRONLY);
-        else 
-        {
-            cmd.to = to;
-        }
-    }
+    //     if (check_user_pipe_to(to, u_to, command.user_pipe_command) < 0) u_to = open("/dev/null", O_WRONLY);
+    //     else 
+    //     {
+    //         cmd.to = to;
+    //     }
+    // }
 
     check_need_data(need_data, data_pipe, data_list);
   
@@ -398,22 +367,11 @@ void parse_line(char *line)
     // user pipe
     std::string s_line(line);
     
-	bool storage_flg = false;
+	// bool storage_flg = false;
 	const char *new_args = " \n\r";
 	char *command = strtok(line, new_args);
 	while(command != NULL){
 		std::string s(command);
-
-		// store the path
-		if (storage_flg) {
-			tmp.store_addr = s;
-			storage_flg = false;
-			C.push_back(tmp);
-			clear_tmp();
-			
-			command = strtok(NULL, new_args);
-			continue;
-		}
 
         // parse msg
         if (s == "tell")
@@ -461,29 +419,13 @@ void parse_line(char *line)
 			C.push_back(tmp);
 			clear_tmp();
 		}
-		else if (command[0] == '|' || command[0] == '!') 
-		{
-			process_pipe_info(command);
-			
-			// add commands
-			C.push_back(tmp);
-			clear_tmp();
-		}
-        else if (s[0] == '<')
+        else if (s == "<")
         {
-            s.erase(0, 1);
-            tmp.user_pipe_from = atoi(s.data())-1;
-            tmp.user_pipe_command = s_line;
+
         }
-		else if (s[0] == '>') 
+		else if (s == ">") 
         {
-            if (s.size() == 1) storage_flg = true;
-            else 
-            {
-                s.erase(0, 1);
-                tmp.user_pipe_to = atoi(s.data())-1;
-                tmp.user_pipe_command = s_line;
-            }
+
         }
 		else tmp.argv.push_back(s);
 
@@ -496,80 +438,80 @@ void parse_line(char *line)
     }
 }
 
-int check_user_pipe_from(int from, int &u_from)
-{
-    client_pid f(from);
-    read_user_info(f);
+// int check_user_pipe_from(int from, int &u_from)
+// {
+//     client_pid f(from);
+//     read_user_info(f);
 
-    /*check if user with id 'from' exist*/
-    if (f.connfd < 0) 
-    { 
-        printf("*** Error: user #%d does not exist yet. ***\n", from+1);
-        if (FIFO_open[from] > 0) {
-            FIFO_open[from] = -1;
+//     /*check if user with id 'from' exist*/
+//     if (f.connfd < 0) 
+//     { 
+//         printf("*** Error: user #%d does not exist yet. ***\n", from+1);
+//         if (FIFO_open[from] > 0) {
+//             FIFO_open[from] = -1;
 
-            char FIFO_name[50];
-            sprintf(FIFO_name, "user_pipe/%d_%d.txt", from, me.id);
+//             char FIFO_name[50];
+//             sprintf(FIFO_name, "user_pipe/%d_%d.txt", from, me.id);
 
-            if (remove(FIFO_name) < 0) printf("can't unlink\n");
-        }
-        return -1;
-    }
+//             if (remove(FIFO_name) < 0) printf("can't unlink\n");
+//         }
+//         return -1;
+//     }
 
-    /*check if user pipe 'from->me' exist, maybe store the information in share memory*/
-    if ((u_from = FIFO_open[from]) < 0)
-    {
-        printf("*** Error: the pipe #%d->#%d does not exist yet. ***\n", from+1, me.id+1);
-        return -1;
-    }
+//     /*check if user pipe 'from->me' exist, maybe store the information in share memory*/
+//     if ((u_from = FIFO_open[from]) < 0)
+//     {
+//         printf("*** Error: the pipe #%d->#%d does not exist yet. ***\n", from+1, me.id+1);
+//         return -1;
+//     }
 
-    FIFO_open[from] = -1;
+//     FIFO_open[from] = -1;
        
 
-    return 0;
-}
+//     return 0;
+// }
 
-int check_user_pipe_to(int to, int &u_to, std::string &cmd_line)
-{
-    /*check if user with id 'to' exist*/
-    client_pid t(to);
-    read_user_info(t);
+// int check_user_pipe_to(int to, int &u_to, std::string &cmd_line)
+// {
+//     /*check if user with id 'to' exist*/
+//     client_pid t(to);
+//     read_user_info(t);
 
-    char FIFO_name[20];
-    sprintf(FIFO_name, "user_pipe/%d_%d.txt", me.id, to);
-    if (t.connfd < 0)
-    {
-        printf("*** Error: user #%d does not exist yet. ***\n", to+1);
-        return -1;
-    }
+//     char FIFO_name[20];
+//     sprintf(FIFO_name, "user_pipe/%d_%d.txt", me.id, to);
+//     if (t.connfd < 0)
+//     {
+//         printf("*** Error: user #%d does not exist yet. ***\n", to+1);
+//         return -1;
+//     }
                 
-    if (mkfifo(FIFO_name, S_IFIFO | 0777) < 0)
-    {
-        if (errno == EEXIST) 
-        {
-            printf("*** Error: the pipe #%d->#%d already exists. ***\n", me.id+1, to+1);
-            return -1;
-        }
-        return -1;
-    }  
+//     if (mkfifo(FIFO_name, S_IFIFO | 0777) < 0)
+//     {
+//         if (errno == EEXIST) 
+//         {
+//             printf("*** Error: the pipe #%d->#%d already exists. ***\n", me.id+1, to+1);
+//             return -1;
+//         }
+//         return -1;
+//     }  
 
-    /* tell the reader to open FIFO read */
+//     /* tell the reader to open FIFO read */
 
-    char msg[MY_LINE_MAX +50];
-    memset(msg, '\0', MY_LINE_MAX+50); 
+//     char msg[MY_LINE_MAX +50];
+//     memset(msg, '\0', MY_LINE_MAX+50); 
 
-    cmd_line.erase(cmd_line.end()-1);
-    sprintf(msg, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", me.name, me.id+1, cmd_line.data(), t.name, t.id+1);
-    broadcast(msg);
+//     cmd_line.erase(cmd_line.end()-1);
+//     sprintf(msg, "*** %s (#%d) just piped '%s' to %s (#%d) ***\n", me.name, me.id+1, cmd_line.data(), t.name, t.id+1);
+//     broadcast(msg);
 
-    if ((u_to = open(FIFO_name, O_WRONLY)) < 0)
-    {
-        printf("can't open write fifo: %s\n", FIFO_name);
-        return -1;
-    }
+//     if ((u_to = open(FIFO_name, O_WRONLY)) < 0)
+//     {
+//         printf("can't open write fifo: %s\n", FIFO_name);
+//         return -1;
+//     }
 
-    return 0;
-}
+//     return 0;
+// }
 
 void print_all_user()
 {
@@ -578,52 +520,25 @@ void print_all_user()
     char snd[MSG_MAX], now[SHM_SIZE];
     memset(snd, '\0', MSG_MAX);
     
-    printf("<ID>\t<nickname>\t<IP:port>\t<indicate me>\n");  
+    printf("%5s%12s%26s%18s\n", "<ID>", "<nickname>", "<IP:port>", "<indicate me>\n");  
     
     for (int i = 0; i < NUM_USER && num_user > 0; i++)
     { 
-        client_pid c(i);
-        read_user_info(c);
-        if (c.connfd < 0) continue;
+        client_pid c;
+        // read_user_info(c, i);
+        if (!read_user_info(c, i)) continue;
 
         num_user--;
         
-        printf("%d\t%s\t%s:%d\t%s\n", i+1, c.name, c.addr, c.port, (c.id == me.id)?" <-me":"");
+        printf("%5d%12s%20s:%5d%17s\n", i+1, c.name, c.addr, c.port, (i == me.id)?"<-me":"");
     }
 }
 
 // void change_name(std::string new_name)
 // {
-//     int num_user = get_shm_num(shm_id[0]);
-
-//     for (int i = 0; i < NUM_USER && num_user > 0; i++)
-//     {       
-//         if (i == me.id) {
-//             num_user--;
-//             continue; 
-//         }
-
-//         client_pid c(i);
-//         read_user_info(c);
-//         if (c.connfd < 0) continue;
-
-//         num_user--;
-        
-//         if (strcmp(c.name, new_name.c_str()) == 0) 
-//         {
-//             printf("*** User '%s' already exists. ***\n", new_name.data());
-//             return;
-//         }
-//     }
-    
 //     read_user_info(me);
 //     strcpy(me.name, new_name.c_str());
 //     write_user_info(me);
-    
-//     char snd[MSG_MAX], now[SHM_SIZE];
-//     memset(snd, '\0', MSG_MAX);
-//     sprintf(snd, "*** User from %s:%d is named '%s'. ***\n", me.addr, me.port, me.name);
-//     broadcast(snd);
 // }
 
 int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list)
@@ -816,8 +731,7 @@ void sig_cli_chld(int signo)
 void sig_cli_int(int signo)
 {    
     /* disconnection, close by server */  
-// printf("in sig cli int\n");
-    /* close user FIFO */
+    /* kill all children */
     for (auto arg:args_of_cmd)
     {
         kill(arg.first, 9);
@@ -828,7 +742,7 @@ void sig_cli_int(int signo)
 
     exit(0);
 }
-
+// std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n')
 void sig_tell(int signo)
 {
     char *msg_shm = (char *)shmat(shm_id[2], 0, 0);
@@ -845,7 +759,8 @@ void sig_tell(int signo)
 
     if (shmdt(msg_shm) < 0) err_sys("shmdt fail");
 
-    printf("%s\n", msg); fflush(stdout);
+    printf("%s\n%% ", msg); fflush(stdout);
+    print_prefix = true;
     
     return;
 }
@@ -861,43 +776,8 @@ void sig_broadcast(int signo)
     
     if (shmdt(shm_addr) < 0) err_sys("shmdt fail");
 
-    printf("%s", msg);fflush(stdout);
-
-    std::string f(msg);
-    // printf("msg: %s, just piped at: %ld\n", msg, f.find("just piped"));
-    int jp = f.find("just piped");
-    if (jp > 0) 
-    {
-        char one[3] = "(#", mm[10];
-        sprintf(mm, "(#%d)", me.id+1);
-        int oo = f.find(one), tt = f.find(mm);
-        if (oo > 0 && tt > 0 && oo != tt) 
-        {
-            char char_f[4];
-            int from;
-            memcpy(char_f, msg + oo + 2, 4);
-            from = atoi(char_f);
-            FIFO_read(from-1);
-        }
-    }
-}
-
-void FIFO_read(int from)
-{
-    /* open FIFO read */
-    char FIFO_name[20];
-    sprintf(FIFO_name, "user_pipe/%d_%d.txt", from, me.id);
-    
-    if ((FIFO_open[from] = open(FIFO_name, O_RDONLY)) < 0)
-    {
-        printf("can't open read fifo: %s\n", FIFO_name);
-        char msg[MSG_MAX];
-        sprintf(msg, "!!!!!!!!!!!!!!!!!!!!!!!user #%d can't open read fifo: %s\n", me.id+1, FIFO_name);
-        broadcast(msg);
-        return;
-    }
-
-    return;
+    printf("%s%% ", msg);fflush(stdout);
+    print_prefix = true;
 }
 
 ssize_t	writen(int connfd, const char *buf, size_t size) {
