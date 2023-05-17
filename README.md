@@ -1,5 +1,4 @@
 # 簡易遠端工作站+聊天室
-*109550022 吳文心*
 
 ## 簡介
 實作可遠端存取的工作站，具體內容包括server、自行實作的shell，以及重新包裝過的client。
@@ -41,22 +40,6 @@
     - [x] 可上傳單一檔案並指定destination檔案名稱
     - [ ] 可上傳檔案至特定資料夾
     - [ ] 可上傳整個資料夾
-
-## 專案架構
-    Project
-    └── codes
-    └── user_space
-        └── bin
-        └── dev
-        └── home
-            └── ww
-            └── jacky
-        └── lib       -> 因重設root directory，需將library搬到指令可以看見的位置以執行指令
-        └── lib64
-        └── share     -> for sharing some files among users
-    └── Makefile
-    └── add_user.sh
-    └── rm_user.sh
 
 ## 已實作內容demo
 ### 內建指令
