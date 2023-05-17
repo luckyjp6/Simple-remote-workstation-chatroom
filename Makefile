@@ -6,10 +6,10 @@ for_server = conn_func.o proc_client.o main_server.o
 for_http = http_server console button
 
 
-all: server #$(for_http)
+all: server client #$(for_http)
 
 server: $(for_server)
-	g++ -o server conn_func.o proc_client.o main_server.o
+	g++ -o worm_server conn_func.o proc_client.o main_server.o
 
 main_server.o: codes/main_server.cpp
 	g++ -c codes/main_server.cpp
@@ -20,6 +20,8 @@ conn_func.o: codes/conn_func.cpp codes/conn_func.h
 proc_client.o: codes/proc_client.cpp codes/proc_client.h
 	g++ -c codes/proc_client.cpp
 
+client: codes/client.cpp	
+	g++ -o worm_client codes/client.cpp
 
 # http_server: codes/http_server.cpp 
 # 	g++ codes/http_server.cpp -o http_server $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
@@ -34,4 +36,4 @@ test: codes/test.cpp
 
 .PHONY: clean
 clean:
-	-rm $(TOTAL) server 
+	-rm $(TOTAL) worm_server worm_client

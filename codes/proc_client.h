@@ -3,44 +3,27 @@
 
 struct my_cmd{
 	std::vector<std::string> argv;
-	int pipe_to = 0; 
-	std::string store_addr = "";
-	bool err = false;
-	bool number_pipe = false;
-	int user_pipe_to = -1; // user pipe to whom (id)
-	int user_pipe_from = -1; // user pipe from whom
-	std::string user_pipe_command = "";
+	std::string input_path = "";
+	std::string output_path = "";
+	bool append;
+	bool pipe;	
+	void clear() {
+		argv.clear();
+		input_path = "";
+		output_path = "";
+		append = false;
+		pipe = false;
+	}
 };
 
 struct args{
 	char **argv;
 	int argc;
-	bool number_pipe = false;
-	int p_num = -1; // pipe id, used in conditional_wait()
-	
-	int to = -1, from = -1;
-};
-
-struct pipe_info
-{
-    int pipe_num = -1;
-    std::string command;
-
-    void reset()
-    {
-        pipe_num = -1;
-        command = "";
-    }
-
-    void set(int p, std::string c)
-    {
-        pipe_num = p;
-        command = c;
-    }
+	int in = -1;
+    int out = -1;
 };
 
 extern client_pid me;
-extern pipe_info user_pipe[NUM_USER][NUM_USER];
 
 int to_client(int id);
 void set_root_dir(char *name);
@@ -49,18 +32,12 @@ int execute_line(char *line);
 int execute_command(my_cmd &command);
 void parse_line(char *line);
 
-int check_user_pipe_from(int from, int &u_from);
-int check_user_pipe_to(int to, int &u_to, std::string &cmd_line);
-
 void print_all_user();
-void change_name(std::string name);
 
-int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list);
-
+void to_dev_null(); // redirect previous pipe output to /dev/null
+// int get_file_fd(std::string path, int open_flag, int mode); // open file for redirection in/out
+//                                                             // may have to consider truncate the file if it is already exist
 int set_output_to_file(my_cmd &command);
-
-void check_need_data(bool &need, int (&p_num)[2], std::vector<int> &data_list); 
-void update_pipe_num_to();
 
 void clear_tmp();
 

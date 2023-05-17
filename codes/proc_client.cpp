@@ -5,9 +5,9 @@
 
 std::vector<my_cmd> C; // after read one line of commands, stores them here
 std::map< size_t, args > args_of_cmd; // pid, args
-my_cmd tmp; // used in clear_tmp() and process_pipe_info()
-std::vector<pnt> pipe_num_to; // pipe_num, counter   
+my_cmd tmp;
 
+int normal_pipe = -1;
 client_pid me;
 
 char home_path[MY_NAME_MAX+10];
@@ -19,17 +19,9 @@ int to_client(int id) {
     sprintf(home_path, "/home/%s", me.name);
 
     /* clean FIFO_open */
-    // memset(FIFO_open, -1, 30);
     C.clear();
     args_of_cmd.clear();
-    clear_tmp();
-    pipe_num_to.clear();
-
-    /* broadcast message */
-    // char msg[MSG_MAX];
-    // memset(msg, '\0', MSG_MAX);
-    // sprintf(msg, "\b\b*** User '%s' jump into the server. ***\n", me.name);
-    // broadcast(msg);
+    tmp.clear();
         
     /* show welcome message */
     printf("\033[35m __       __       __   ______    __ __    ____  ____\033[0m\n");
@@ -72,7 +64,7 @@ int to_client(int id) {
 
         int status;
         if ((status = execute_line(buf)) == -1) break;
-        else if (status == -2) return 0;
+        // else if (status == -2) return 0;
     }
 
     wait_all_children();
@@ -84,14 +76,29 @@ int to_client(int id) {
 int execute_line(char *line) {
     parse_line(line);
 
+    bool interrupt = false;
     int status = 0;
-    for (int i = 0; i < C.size(); i++)
+    for (int i = 0; (i < C.size()) && !interrupt; i++)
     {
-        if (i % 50 == 0 && i != 0) conditional_wait();
-        if ((status = execute_command(C[i])) < 0) return status; // exit        
+        if (i % 50 == 0 && i != 0) wait_all_children();
+        if ((status = execute_command(C[i])) < 0) {
+            switch (status)
+            {
+            case -1: // exit
+                return -1;             
+            case -2: // error of input file (file redirection)
+                interrupt = true;
+                break;
+            }
+        }
     }
-    if (status == 0) update_pipe_num_to();
-    conditional_wait();
+    if (normal_pipe >= 0) {
+        if (interrupt) close(normal_pipe);
+        else {
+            // ???
+        }
+    }
+    wait_all_children();
     C.clear();
     
     return 0;
@@ -143,65 +150,33 @@ int execute_command(my_cmd &command) {
     args cmd;
     cmd.argc = command.argv.size();
     cmd.argv = (char**) malloc(sizeof(char*) * (cmd.argc+1));
-    cmd.number_pipe = command.number_pipe;
 
-    bool need_data, need_pipe = (command.pipe_to > 0);
-    bool u_pipe_to = false, u_pipe_from = false;
-    int u_to, u_from;
+    bool need_input=(command.input_path.size() > 0), need_output=(command.output_path.size() > 0);
     size_t pid;
-    int p_num[2], data_pipe[2];
+    int in_fd, out_fd, out_pipe[2];
     std::vector<int> data_list;
 
-    // record pipe descripter for the command behind to read
-    if (need_pipe) 
-    {
-        pipe(p_num);
-        cmd.p_num = p_num[0];
+    /* file redirection & normal pipe */
+    if (need_input) {
+        in_fd = open(command.input_path.c_str(), O_RDONLY, 0);
+        if (in_fd < 0) {
+            perror("worm_server: ");
+            return -2;
+        }
     }
-
-    // received data from user pipe
-    // int from = command.user_pipe_from;
-    // if (from >= 0)
-    // {
-    //     u_pipe_from = true;
-
-    //     if (check_user_pipe_from(from, u_from) < 0) u_from = open("/dev/null", O_RDONLY);
-    //     else 
-    //     {
-    //         std::string cmd_line = command.user_pipe_command;
-            
-    //         char msg[MY_LINE_MAX +50];
-    //         memset(msg, '\0', MY_LINE_MAX+50);
-
-    //         client_pid c(from);
-    //         read_user_info(c);
-            
-    //         cmd_line.erase(cmd_line.end()-1);
-    //         sprintf(msg, "*** %s (#%d) just received from %s (#%d) by '%s' ***\n", me.name, me.id+1, c.name, from+1, cmd_line.data());
-    //         broadcast(msg);
-
-    //         cmd.from = from;
-    //     }
-
-        
-    // }
-
-    // user pipe to other user
-    // int to = command.user_pipe_to;
-    // if (to >= 0)
-    // {
-    //     u_pipe_to = true;
-
-    //     if (check_user_pipe_to(to, u_to, command.user_pipe_command) < 0) u_to = open("/dev/null", O_WRONLY);
-    //     else 
-    //     {
-    //         cmd.to = to;
-    //     }
-    // }
-
-    check_need_data(need_data, data_pipe, data_list);
-  
-    // fork
+    if (need_output) {
+        int open_flg = O_RDWR | O_CREAT;
+        if (command.append) open_flg |= O_APPEND;
+        out_fd = open(command.output_path.c_str(), open_flg, 00700);
+        if (out_fd < 0) {
+            if (need_input) close(in_fd);
+            perror("worm_server: ");
+            return -2;
+        }
+    }
+    if (command.pipe) { pipe(out_pipe); cmd.out = out_pipe[1]; }
+    
+    /* fork */
     pid = fork();
     if (pid < 0) 
     {
@@ -209,80 +184,30 @@ int execute_command(my_cmd &command) {
         return 0;
     }
 
-    // parent do
+    /* parent do */
     if (pid > 0)
     {
-        if (need_pipe) close(p_num[1]);
-        if (need_data) close(data_pipe[0]);
+        if (need_input) close(in_fd);
+        if (need_input && normal_pipe >= 0) to_dev_null();
+        if (need_output) close(out_fd);
+        if (command.pipe) { close(out_pipe[1]); normal_pipe = out_pipe[0]; }
 
-        if (u_pipe_to) close(u_to);
-        if (u_pipe_from) close(u_from);
-
-        // record memory allocate address
+        /* record memory allocate address */
         args_of_cmd.insert(std::pair<size_t, args> (pid, cmd));
-        
-        // update when new line
-        if (command.number_pipe) update_pipe_num_to();
-        
-        // store read id of pipe
-        pnt tmp;
-        if (command.number_pipe) {
-            tmp.set(p_num[0], command.pipe_to-1);
-            pipe_num_to.push_back(tmp);
-        }
-        else if (need_pipe) 
-        {
-            tmp.set(p_num[0], 0);
-            pipe_num_to.push_back(tmp);
-        }
 
-        int status;
-        // process data from multiple pipe
-        if (need_data && data_list.size() != 0) 
-            if ((status = handle_data_from_multiple_pipe(data_pipe, data_list)) < 0) return status;
-        
-        // update when new line
-        if (command.number_pipe) return 1;
-        else return 0;
+        return 0;
     }
-    //child do
+    /* child do */
     else {
-
-        // received data from other process
-        if (need_data) 
-        {
-            // parent will handle multiple pipes of data
-            if (data_list.size() != 0) 
-            {
-                close(data_pipe[1]);
-                for(auto id: data_list) close(id);
-            }
-
-            dup2(data_pipe[0], STDIN_FILENO);
-        }
-        else if (u_pipe_from) dup2(u_from, STDIN_FILENO);
+        /* process input */
+        if (need_input) dup2(in_fd, STDIN_FILENO);
+        else if (normal_pipe >= 0) dup2(normal_pipe, STDIN_FILENO);
+        /* process output */
+        if (need_output) dup2(out_fd, STDOUT_FILENO);
+        else if (command.pipe) { close(out_pipe[0]); dup2(out_pipe[1], STDOUT_FILENO); }
 
         // pipe stderr
-        if (command.err) dup2(p_num[1], STDERR_FILENO);
-
-        // pipe data to other process
-        if (need_pipe) {
-            close(p_num[0]);
-            dup2(p_num[1], STDOUT_FILENO);
-        }
-        else if (u_pipe_to) 
-        {
-            dup2(u_to, STDOUT_FILENO);
-        }
-
-        // store data to a file
-        if (command.store_addr.size() > 0) {
-            if (set_output_to_file(command) < 0)
-            {
-                free(cmd.argv);
-                return 0;
-            }
-        }
+        // if (command.err) dup2(p_num[1], STDERR_FILENO);
 
         // get the arguments ready
         for (int j = 0; j < cmd.argc; j++){
@@ -297,10 +222,11 @@ int execute_command(my_cmd &command) {
             printf("Unknown command: [%s].\n", cmd.argv[0]);
 
             // close pipe
-            if (need_data) close(data_pipe[0]);
-            if (need_pipe) close(p_num[1]);
+            if (need_input) close(in_fd);
+            if (need_output) close(out_fd);
+            else if (command.pipe) close(out_pipe[0]);
 
-            return -2;
+            exit(-1);
         }
     }
     return 0;
@@ -312,72 +238,39 @@ void parse_line(char *line) {
     
 	// bool storage_flg = false;
 	const char *new_args = " \n\r";
-	char *command = strtok(line, new_args);
-	while(command != NULL){
+	char *command = strtok_r(line, new_args, &line);
+	while(command != NULL) {
 		std::string s(command);
 
         // parse msg
-        if (s == "tell")
-        {
-            tmp.argv.push_back(s);
-
-            char *to = strtok(NULL, " ");
-            if (to != NULL) {
-                std::string t(to);
-                tmp.argv.push_back(t);
-
-                char *msg = strtok(NULL, "\n\r\0");
-                if (msg != NULL)
-                {
-                    std::string m(msg);
-                    tmp.argv.push_back(m);
-                }
-            }
-            C.push_back(tmp);
-            clear_tmp();
-            return;
-        }
-        if (s == "yell")
-        {
-            tmp.argv.push_back(s);
-
-            char *msg = strtok(NULL, "\n\r\0");
-            if (msg  != NULL) 
-            {
-                std::string m(msg);
-                tmp.argv.push_back(m);
-            }
-            
-
-            C.push_back(tmp);
-            clear_tmp();
-            return;
-        }
-
-		if (s == "|")
-		{
-			tmp.pipe_to = 1;
+		if (s == "|") {
+			tmp.pipe = true;
 		
 			// add commands
 			C.push_back(tmp);
-			clear_tmp();
+			tmp.clear();
 		}
-        else if (s == "<")
-        {
-
+        else if (s == "<") {
+            char *path = strtok_r(line, new_args, &line);
+            tmp.input_path = path;
         }
-		else if (s == ">") 
-        {
-
+		else if (s == ">") {
+            char *path = strtok_r(line, new_args, &line);
+            tmp.output_path = path;
+            tmp.append = false;
+        }
+        else if (s == ">>") {
+            char *path = strtok_r(line, new_args, &line);
+            tmp.output_path = path;
+            tmp.append = true;
         }
 		else tmp.argv.push_back(s);
 
-		command = strtok(NULL, new_args);
+		command = strtok_r(line, new_args, &line);
 	}
-	if (tmp.argv.size() > 0) 
-    {
+	if (tmp.argv.size() > 0) {
         C.push_back(tmp);
-    	clear_tmp();
+    	tmp.clear();
     }
 }
 
@@ -401,152 +294,20 @@ void print_all_user() {
     }
 }
 
-int handle_data_from_multiple_pipe(int data_pipe[2], std::vector<int> data_list) {
+void to_dev_null() {
 
-	// fork a child to process
-	int pid = fork();
-    
-	if (pid < 0) {
-		char err[] = "failed to fork\n";
-		write(STDERR_FILENO, err, strlen(err));
-		return -1;
-	}
-
-	if (pid == 0) {
-		// read data from each pipe (fifo)
-		for (auto id: data_list) {
-			char read_data[1024];
-			int read_length;
-            memset(read_data, 0, 1024);
-			while ((read_length = read(id, read_data, 1024)) > 0) {
-				write(data_pipe[1], read_data, read_length);
-			}
-			close(id);
-		}
-		close(data_pipe[1]);
-		return -2;
-	}else{
-		close(data_pipe[1]);
-		for(auto id: data_list) close(id);
-		data_list.clear();
-		
-		// information for signal handler about how to handle this child
-		args cmd;
-		cmd.argv = NULL; cmd.argc = 0;
-		args_of_cmd.insert(std::pair<size_t, args> (pid, cmd));
-
-		return 0;
-	}
-
-	return 0;
-}
-
-int set_output_to_file(my_cmd &command) {
-	size_t file_id = open(command.store_addr.data(), O_WRONLY|O_CREAT|O_TRUNC, 00777);
-	// clear the file content
-	ftruncate(file_id, 0);
-	lseek(file_id, 0, SEEK_SET);
-	if (file_id < 0) {
-		char err[1024];
-		sprintf(err, "Failed to open file: %s\n", command.store_addr.data());
-		write(STDERR_FILENO, err, strlen(err));
-		return -1;
-	}
-	dup2(file_id, STDOUT_FILENO);
-	return 0;
-}
-
-void check_need_data(bool &need, int (&data_pipe)[2], std::vector<int> &data_list) {
-	// get all needed data for current command into datalist 
-	// (datalist stores the needed read end of the pipe)
-	data_list.clear();
-
-	// counter == 0 => pipe the data to the command that execute next
-	for (auto i = pipe_num_to.begin(); i < pipe_num_to.end(); ) {
-    	if (i->remain <= 0) {
-            data_list.push_back(i->pipe_num);
-            pipe_num_to.erase(i);
-        }
-        else i++;
-	}
-
-    need = (data_list.size() != 0);
-	if (!need) return;
-	// if only one pipe of data needed
-	// directly assign read p_id to data_pipe
-	else if(data_list.size() == 1) {
-		data_pipe[0] = data_list[0];
-		data_list.clear();
-		return;
-	}
-	// parent will tackle the data from multiple pipe
-	else pipe(data_pipe);
-}
-
-void update_pipe_num_to() { 
-
-	for (auto i = pipe_num_to.begin(); i < pipe_num_to.end(); ) {
-        i -> remain--;
-		if (i->remain < 0) {
-            pipe_num_to.erase(i);
-        }
-        else 
-            i++;
-	}
-}
-
-void clear_tmp() {
-	tmp.argv.clear();
-	tmp.pipe_to = 0;
-	tmp.store_addr = "";
-	tmp.err = false;
-	tmp.number_pipe = false;
-    tmp.user_pipe_to = -1;
-    tmp.user_pipe_from = -1;
-    tmp.user_pipe_command = "";
-}
-
-void process_pipe_info(std::string s) {
-	// only process number pipe
-	tmp.number_pipe = true;
-	if (s[0] == '!') tmp.err = true;
-	
-    s.erase(0, 1);
-	tmp.pipe_to = atoi(s.c_str());
+    if (fork() == 0) {
+        char buf[MY_LINE_MAX];
+        while (read(normal_pipe, buf, MY_LINE_MAX) > 0) ;
+    }else {
+        close(normal_pipe);
+        normal_pipe = -1;
+    }
 }
 
 void wait_all_children() {
 	while (!args_of_cmd.empty()) {
 		sig_cli_chld(SIGCHLD);			
-	}
-}
-
-void conditional_wait() {
-	while(!args_of_cmd.empty()) {
-		sig_cli_chld(SIGCHLD);
-
-		// stop waiting if remaining are all commands with number pipe
-		// the output are not immediately needed
-		bool must_wait = false;
-		for (auto s:args_of_cmd) {
-			int p_num = s.second.p_num;
-            bool find = false;
-			for (auto p:pipe_num_to) {
-                if (p.pipe_num == p_num)
-                {
-                    find = true;
-                    break;
-                }
-			}
-            if (!find)
-            {
-                must_wait = true;
-                break;
-            }
-		}
-		if (!must_wait) {
-			break;
-		}
 	}
 }
 
@@ -556,30 +317,7 @@ void sig_cli_chld(int signo) {
 	while ( (pid = waitpid(-1, &stat, WNOHANG)) > 0){
 		// free the memory!!
 		char **cmd_argv = args_of_cmd[pid].argv;
-        if (cmd_argv != NULL) free(cmd_argv);
-		
-        if (args_of_cmd[pid].from >= 0)
-        {
-            char FIFO_name[50];
-            sprintf(FIFO_name, "user_pipe/%d_%d.txt", args_of_cmd[pid].from, me.id);
-            
-            if (remove(FIFO_name) < 0)
-            {
-                printf("can't remove %s\n", FIFO_name);
-            }
-        }
-
-        // if (args_of_cmd[pid].to >= 0)
-        // {
-        //     char FIFO_name[50];
-        //     sprintf(FIFO_name, "user_pipe/%d_%d.txt", me.id, args_of_cmd[pid].to);
-            
-        //     if (remove(FIFO_name) < 0)
-        //     {
-        //         printf("can't remove %s\n", FIFO_name);
-        //     }
-        // }
-        
+        if (cmd_argv != NULL) free(cmd_argv);        
         args_of_cmd.erase(pid);		
     }
 

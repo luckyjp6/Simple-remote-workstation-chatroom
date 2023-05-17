@@ -11,7 +11,7 @@ int server_gid = -1;
 
 void init() {
     /* set user info */
-    shm_key[0] = (key_t)(1453);
+    shm_key[0] = (key_t)(1453);  
     if ((shm_id[0] = shmget(shm_key[0], SHM_SIZE*NUM_USER, PERMS|IPC_CREAT)) < 0) err_sys("shmget fail");
     char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
     if (shm_addr == NULL) err_sys("shmat fail");

@@ -27,7 +27,6 @@
 #include <algorithm>
 #include <sys/epoll.h>
 
-#define SEM_FOLDER "./shm"
 #define PERMS 0666
 #define SHM_SIZE 100
 
@@ -38,18 +37,6 @@
 #define NUM_USER 30
 #define MAX_USER 30
 #define MAX_EVENT MAX_USER*2
-
-struct pnt // pipe number to
-{
-    ssize_t pipe_num;
-    int remain;
-    
-    void set(ssize_t p, int r)
-    {
-        pipe_num = p;
-        remain = r;        
-    }
-};
 
 struct client_pid
 {
