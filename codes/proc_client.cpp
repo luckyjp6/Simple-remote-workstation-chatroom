@@ -167,6 +167,7 @@ int execute_command(my_cmd &command) {
     if (need_output) {
         int open_flg = O_RDWR | O_CREAT;
         if (command.append) open_flg |= O_APPEND;
+        else open_flg |= O_TRUNC;
         out_fd = open(command.output_path.c_str(), open_flg, 00700);
         if (out_fd < 0) {
             if (need_input) close(in_fd);

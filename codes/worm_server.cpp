@@ -1,14 +1,16 @@
 #include "conn_func.h"
 #include "proc_client.h"
 
+#define WORM_PORT 8787
+
 void sig_chld(int signo);
 void sig_int(int signo);
 
 int maxi = 0;
 
 int main(int argc, char **argv) {
-	if (argc < 2) {
-        printf("Usage: ./a.out [port]\n");
+	if (argc > 2) {
+        printf("Usage: ./worm_server\n");
         return -1;
     }
     
@@ -23,10 +25,11 @@ int main(int argc, char **argv) {
     signal(SIGINT,  sig_int); // handle server termination
     signal(SIGTERM,  sig_int); // handle server termination
 
-    if (my_connect(listenfd, argv[1], servaddr) == 0) return -1;
+    if (my_connect(listenfd, WORM_PORT, servaddr) == 0) return -1;
 
 	for ( ; ; ) {
         int new_id = handle_new_connection(connfd, listenfd);
+        if (new_id < 0) continue;
         if (new_id >= maxi) maxi = new_id+1;
         
         int pid = fork();
@@ -60,6 +63,7 @@ int main(int argc, char **argv) {
         else
         {
             cp[new_id].set(pid);
+            close(cp[new_id].connfd);
             write_user_info(cp[new_id]);
             printf("new client!! pid: %d, id: %d\n", pid, new_id);
         }   
@@ -89,7 +93,7 @@ void sig_chld(int signo) {
 
 void sig_int(int signo)  {
     /* server terminate by terminal ctrl +c */
-    printf("in sig_int, maxi = %d\n", maxi);
+    printf("in sig_int, maxi = %d\n", maxi); fflush(stdout);
 
     /* kill all children */
     bool remain = true;

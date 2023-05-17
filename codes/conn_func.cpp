@@ -70,7 +70,7 @@ void init() {
     server_gid = grp->gr_gid;
 }
 
-int my_connect(int &listenfd, char *port, sockaddr_in &servaddr) {
+int my_connect(int &listenfd, int port, sockaddr_in &servaddr) {
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     int reuse = 1;
     int buf_size = MY_LINE_MAX;
@@ -80,7 +80,7 @@ int my_connect(int &listenfd, char *port, sockaddr_in &servaddr) {
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family      = AF_INET;
 	servaddr.sin_addr.s_addr = htonl(0);
-	servaddr.sin_port        = htons(atoi(port));
+	servaddr.sin_port        = htons(port);
 
 	while (bind(listenfd, (const sockaddr *) &servaddr, sizeof(servaddr)) < 0) 
     {
@@ -121,6 +121,37 @@ int handle_new_connection(int &connfd, const int listenfd) {
         std::string name_s(name);
         size_t next_line = name_s.find("\n");
         name_s.erase(next_line);
+
+        if (memcmp(name, "load", 4) == 0) {
+            int uid;
+            std::string user_name = name_s.substr(5);
+            uid = check_usr_exist((char *)user_name.c_str());
+            if (uid < 0) {
+                printf("Wrong user name\n"); fflush(stdout);
+                close(connfd);
+                return -1;
+            }
+            
+            if (fork() == 0) {
+                close(listenfd);
+                for (auto c:cp)
+                {
+                    if (c.connfd > 0 && c.connfd != connfd) close(c.connfd);
+                }
+
+                /* set root dir */
+                set_root_dir((char *)user_name.c_str());
+                /* set user id */
+                if (setuid(uid) < 0) err_sys("setuid");
+
+                handle_load_file(connfd);
+                exit(0);
+            } else {
+                close(connfd);
+                return -1;
+            }
+        }
+
         if (name_s.size() > MY_NAME_MAX) name_s = name_s.substr(0, MY_NAME_MAX);
 
         strcpy(cp[new_id].name, name_s.c_str());
@@ -136,11 +167,9 @@ int handle_new_connection(int &connfd, const int listenfd) {
 int check_usr_exist(char *name) {
     struct passwd* pw = getpwnam(name);
     if (pw != nullptr) {
-        // std::cout << "UID for user " << name << " is " << pw->pw_uid << std::endl;
         if (pw->pw_gid != server_gid) return -1;
         return pw->pw_uid;
     } else {
-        // std::cerr << "User " << name << " not found" << std::endl;
         return -1;
     }
 }
@@ -148,11 +177,8 @@ int check_usr_exist(char *name) {
 void set_root_dir(char *name) {
     char root_path[MY_LINE_MAX];
     char home_path[MY_LINE_MAX];
-    // printf("cwd: %s\n", getcwd(NULL, 0)); fflush(stdout);
     sprintf(home_path, "/home/%s", name);
     sprintf(root_path, "%s/user_space", getcwd(NULL, 0));
-    // printf("root path: %s##\n", root_path); fflush(stdout);
-    // printf("home path: %s##\n", home_path); fflush(stdout);
     
 
     if (chdir(root_path) < 0) err_sys("chdir");
@@ -160,18 +186,59 @@ void set_root_dir(char *name) {
     if (chdir(home_path) < 0) err_sys("chdir");
 
     setenv("PATH", "/bin", 1);
-    // printf("bin path: %s\n", bin_path);
-    // printf("now path: %s\n", getcwd(NULL, 0));    
-    // fflush(stdout);
 }   
+
+void handle_load_file(int connfd) {
+    write(connfd, "ok", 2);
+    int len;
+    char buf[MY_LINE_MAX] = {0};
+
+    // get upload/download command
+    len = read(connfd, buf, MY_LINE_MAX);
+    if (len <= 0) exit(-1);
+    
+    if (memcmp(buf, "worm_upload", strlen("worm_upload")) == 0) {
+        char file_path[500] = {0};
+        memcpy(file_path, buf+12, len-12);
+        int fd = open(file_path, O_RDWR | O_CREAT, 00700);
+        if (fd < 0) err_sys("creat file");
+        write(connfd, "ok", 2);
+
+        size_t len;
+        char buf[MY_LINE_MAX];
+        while( (len = read(connfd, buf, MY_LINE_MAX)) > 0) write(fd, buf, len);
+        if (len < 0) err_sys("read");
+
+        close(fd);
+        close(connfd);
+        exit(0);
+    } else if (memcmp(buf, "worm_download", strlen("worm_download")) == 0) {
+        char file_path[500] = {0};
+        memcpy(file_path, buf+14, len-14);
+
+        int fd = open(file_path, O_RDONLY);
+        if (fd < 0) err_sys("open file");
+        write(connfd, "ok", 2);
+        size_t len;
+        char buf[MY_LINE_MAX] = {0};
+        while ( (len = read(fd, buf, MY_LINE_MAX)) > 0 ) write(connfd, buf, len);
+        if (len < 0) err_sys("read");
+        
+        close(fd);
+        close(connfd);
+        exit(0);
+    } else {
+        printf("Invalid cp command\n"); fflush(stdout);
+        exit(-1);
+    }
+}
 
 void close_client(int index) {    
     if (cp[index].connfd > 0)
     {
         epoll_event ev;
         ev.data.fd = cp[index].request;
-        // if (epoll_ctl(epollfd, EPOLL_CTL_DEL, cp[index].request, &ev) < 0) err_sys("epoll_ctl: msg");
-        close(cp[index].connfd);
+        // close(cp[index].connfd);
         close(cp[index].msg);
         close(cp[index].request);
 
@@ -256,20 +323,6 @@ bool read_user_info(client_pid &c, int id) {
 
    if (shmdt(shm_addr) < 0) perror("shmdt fail");
    return false;
-    // char *shm_addr = (char *)shmat(shm_id[0], 0, 0);
-    // if (shm_addr == NULL) err_sys("shmat fail");    
-    // char now[SHM_SIZE];
-    
-    // memcpy(now, shm_addr + c.id*SHM_SIZE +5, SHM_SIZE);
-
-    // sscanf(now, "%d %d %s %d", &c.connfd, &c.pid, c.addr, &c.port); 
-    
-    // char *ss = strtok(now, " ");
-    // for (int i = 0; i < 3; i++) ss = strtok(NULL, " ");
-    // ss = strtok(NULL, "\0");
-    // strcpy(c.name, ss);
-
-    // if (shmdt(shm_addr) < 0) perror("shmdt fail");
 }
 
 bool format_user_info(char *row_data, client_pid &c) {

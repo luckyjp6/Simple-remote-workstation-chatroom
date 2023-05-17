@@ -1,14 +1,21 @@
 #include <iostream>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/signal.h>
 #include <poll.h>
+#include <vector>
+#include <string.h>
+
+// #include <curses.h>
 
 #define MY_LINE_MAX 15000 +100
+#define WORM_PORT 8787
 
 int sockfd;
+// std::vector<std::string> cmds;
 
 void err_sys(const char *err) {
     perror(err);
@@ -18,59 +25,82 @@ void err_sys(const char *err) {
 void sig_int(int signo) {
     char buf[MY_LINE_MAX];
     fflush(stdin);
-    // read(0, buf, MY_LINE_MAX);
-    // std::cout << "clear: " << buf << std::endl;
+
     write(1, "\n", 1);
     write(sockfd, "\n", 1);
     return;
 }
 
 int main(int argc, char **argv) {
-    if (argc < 3) {
-        std::cout << "Usage: ./worm_client <server IP> <server port>" << std::endl;
+    if (argc < 2) {
+        std::cout << "Usage: ./worm_client <user name>@<server IP>" << std::endl;
         return 0;
     }
 
     signal(SIGINT, sig_int);
 
+    char        *user_name, s_IP[20];
     sockaddr_in server_addr;
     int         nready;
     pollfd      p_fd[2];
 
+    // get args
+    char *server_IP = s_IP;
+    user_name = strtok_r(argv[1], "@", &server_IP);
+    
     // set socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(atoi(argv[2]));
-    if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) < 0) err_sys("inet_pton");
+    server_addr.sin_port = htons(WORM_PORT);
+    if (inet_pton(AF_INET, server_IP, &server_addr.sin_addr) < 0) err_sys("inet_pton");
     if (connect(sockfd, (sockaddr*)&server_addr, sizeof(sockaddr)) < 0) err_sys("connect");
 
     // set poll fd
     p_fd[0].fd = 0;
-    p_fd[0].events = POLLRDNORM;
+    p_fd[0].events = POLLIN;
 
     p_fd[1].fd = sockfd;
-    p_fd[1].events = POLLRDNORM;
+    p_fd[1].events = POLLIN;
 
     char buf[MY_LINE_MAX];
+    // input user name
+    read(sockfd, buf, MY_LINE_MAX);
+    write(sockfd, user_name, strlen(user_name));
+    write(sockfd, "\n", 1);
     for ( ; ; ) {
         nready = poll(p_fd, 2, -1);
         
         // user input
-        if (p_fd[0].revents & POLLRDNORM) {
+        if (p_fd[0].revents & POLLIN) {
+            // char ch = getch();
             int len = read(0, buf, MY_LINE_MAX);
+            
+            // error & EOF
             if (len < 0) err_sys("stdin");
             else if (len == 0) {
                 write(1, "\n", 1);
                 return 0;
             }
+
+            // upload file
+            if (memcmp(buf, "worm_upload ", 11) == 0) {
+                char *b = buf;
+                char *filename = strtok_r(b, " ", &b);
+                int fd = open(filename, O_RDONLY, 0);
+                if (fd < 0) {}
+            }
             write(sockfd, buf, len);
-        } else if(p_fd[1].revents & POLLRDNORM) {
+        } else if(p_fd[1].revents & POLLIN) {
             int len = read(sockfd, buf, MY_LINE_MAX);
+
+            // error & EOF
             if (len < 0) err_sys("remote");
             else if (len == 0) {
                 write(1, "\n", 1);
                 return 0;
             }
+
+            // print result
             write(1, buf, len);
         }
     }

@@ -1,18 +1,18 @@
-TOTAL = conn_func.o proc_client.o main_server.o
+TOTAL = conn_func.o proc_client.o worm_server.o
 CXXFLAGS=-std=c++17 -Wall -pedantic -pthread -lboost_system
 CXX_INCLUDE_PARAMS=$(addprefix -I , $(CXX_INCLUDE_DIRS))
 CXX_LIB_PARAMS=$(addprefix -L , $(CXX_LIB_DIRS))
-for_server = conn_func.o proc_client.o main_server.o
-for_http = http_server console button
+for_server = conn_func.o proc_client.o worm_server.o
+# for_http = http_server console button
 
 
-all: server client #$(for_http)
+all: server client cp #$(for_http)
 
 server: $(for_server)
-	g++ -o worm_server conn_func.o proc_client.o main_server.o
+	g++ -o worm_server conn_func.o proc_client.o worm_server.o
 
-main_server.o: codes/main_server.cpp
-	g++ -c codes/main_server.cpp
+worm_server.o: codes/worm_server.cpp
+	g++ -c codes/worm_server.cpp
 
 conn_func.o: codes/conn_func.cpp codes/conn_func.h
 	g++ -c codes/conn_func.cpp
@@ -20,8 +20,11 @@ conn_func.o: codes/conn_func.cpp codes/conn_func.h
 proc_client.o: codes/proc_client.cpp codes/proc_client.h
 	g++ -c codes/proc_client.cpp
 
-client: codes/client.cpp	
-	g++ -o worm_client codes/client.cpp
+client: codes/worm_client.cpp	
+	g++ -o worm_client codes/worm_client.cpp
+
+cp: codes/worm_cp.cpp
+	g++ -o worm_cp codes/worm_cp.cpp
 
 # http_server: codes/http_server.cpp 
 # 	g++ codes/http_server.cpp -o http_server $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)

@@ -83,9 +83,10 @@ extern int shm_id[3];
 
 void init();
 
-int my_connect(int &listenfd, char *port, sockaddr_in &servaddr);
+int my_connect(int &listenfd, int port, sockaddr_in &servaddr);
 int handle_new_connection(int &connfd, const int listenfd);
 int check_usr_exist(char *name);
+void handle_load_file(int connfd);
 
 void close_client(int index);
 
