@@ -29,7 +29,11 @@ int main(int argc, char **argv) {
 
 	for ( ; ; ) {
         int new_id = handle_new_connection(connfd, listenfd);
-        if (new_id < 0) continue;
+        if (new_id < 0) {
+            write(connfd, "Wrong password\n", 15);
+            close(connfd);
+            continue;
+        }
         if (new_id >= maxi) maxi = new_id+1;
         
         int pid = fork();

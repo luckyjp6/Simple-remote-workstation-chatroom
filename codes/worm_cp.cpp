@@ -7,6 +7,7 @@
 #include <sys/signal.h>
 #include <vector>
 #include <string.h>
+#include <termios.h>
 
 // #include <curses.h>
 
@@ -72,12 +73,28 @@ int main(int argc, char **argv) {
 
     int len;
     char buf[MY_LINE_MAX];
+
     /* input user name */
     user_name = "load " + user_name + "\n";
     read(sockfd, buf, MY_LINE_MAX);
     write(sockfd, user_name.c_str(), user_name.size());
+    
+    /* input passwd */
+    termios old_attr, new_attr;
+    tcgetattr(STDIN_FILENO, &old_attr);
+    new_attr = old_attr;
+    new_attr.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
 
-    // wait server fork childern
+    read(sockfd, buf, MY_LINE_MAX);
+    write(0, buf, strlen(buf));
+    read(0, buf, MY_LINE_MAX);
+    write(sockfd, buf, strlen(buf));
+    write(0, "\n", 1);
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
+
+    /* wait server fork childern */
     len = read(sockfd, buf, MY_LINE_MAX);
         
     if (memcmp(buf, "ok", 2) != 0) {
@@ -88,7 +105,7 @@ int main(int argc, char **argv) {
     }
 
     if (is_local[0]) { // upload
-        // pass upload command
+        /* pass upload command */
         std::string s;
         s = "worm_upload " + path[1]; 
         write(sockfd, s.c_str(), s.size());
@@ -105,7 +122,7 @@ int main(int argc, char **argv) {
         if (len < 0) err_sys("read");
 
     } else { // download
-        // pass download command
+        /* pass download command */
         std::string s;
         s = "worm_download " + path[0];
         write(sockfd, s.c_str(), s.size());

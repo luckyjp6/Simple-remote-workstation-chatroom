@@ -8,10 +8,14 @@
 #include <poll.h>
 #include <vector>
 #include <string.h>
+#include <stdio.h>
+#include <algorithm>
+#include <termios.h>
 
 // #include <curses.h>
 
 #define MY_LINE_MAX 15000 +100
+#define MY_NAME_MAX 20 +10
 #define WORM_PORT 8787
 
 int sockfd;
@@ -61,14 +65,31 @@ int main(int argc, char **argv) {
 
     p_fd[1].fd = sockfd;
     p_fd[1].events = POLLIN;
-
+    
     char buf[MY_LINE_MAX];
     // input user name
     read(sockfd, buf, MY_LINE_MAX);
-    write(sockfd, user_name, strlen(user_name));
+    write(sockfd, user_name, std::min((int)strlen(user_name), MY_NAME_MAX));
     write(sockfd, "\n", 1);
+
+    // input passwd
+    termios old_attr, new_attr;
+    tcgetattr(STDIN_FILENO, &old_attr);
+    new_attr = old_attr;
+    new_attr.c_lflag &= ~ECHO;
+    tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
+
+    read(sockfd, buf, MY_LINE_MAX);
+    write(0, buf, strlen(buf));
+    read(0, buf, MY_LINE_MAX);
+    write(sockfd, buf, strlen(buf));
+    write(0, "\n", 1);
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
+
     for ( ; ; ) {
         nready = poll(p_fd, 2, -1);
+        memset(buf, 0, sizeof(buf));
         
         // user input
         if (p_fd[0].revents & POLLIN) {

@@ -118,19 +118,15 @@ int handle_new_connection(int &connfd, const int listenfd) {
         write(connfd, "User name: ", strlen("User name: ")); fflush(stdout);
         read(connfd, name, MY_NAME_MAX);
         
+        int uid;
         std::string name_s(name);
         size_t next_line = name_s.find("\n");
         name_s.erase(next_line);
 
         if (memcmp(name, "load", 4) == 0) {
-            int uid;
             std::string user_name = name_s.substr(5);
-            uid = check_usr_exist((char *)user_name.c_str());
-            if (uid < 0) {
-                printf("Wrong user name\n"); fflush(stdout);
-                close(connfd);
-                return -1;
-            }
+            uid = check_usr_exist(connfd, (char *)user_name.c_str());
+            if (uid < 0) return -1;
             
             if (fork() == 0) {
                 close(listenfd);
@@ -155,7 +151,9 @@ int handle_new_connection(int &connfd, const int listenfd) {
         if (name_s.size() > MY_NAME_MAX) name_s = name_s.substr(0, MY_NAME_MAX);
 
         strcpy(cp[new_id].name, name_s.c_str());
-        cp[new_id].uid = check_usr_exist(cp[new_id].name);
+        uid = check_usr_exist(connfd, cp[new_id].name);
+        if (uid < 0) return -1;
+        cp[new_id].uid = uid;
     }
 
     alter_num_user(1);
@@ -164,14 +162,34 @@ int handle_new_connection(int &connfd, const int listenfd) {
     return new_id;
 }
 
-int check_usr_exist(char *name) {
+int check_usr_exist(int connfd, char *name) {
+    int user_id = -1;
     struct passwd* pw = getpwnam(name);
     if (pw != nullptr) {
-        if (pw->pw_gid != server_gid) return -1;
-        return pw->pw_uid;
-    } else {
-        return -1;
+        if (pw->pw_gid == server_gid) user_id = pw->pw_uid;
     }
+    int passwd_len;
+    char msg[200] = {0};
+    sprintf(msg, "%s@140.113.141.90's password: ", name);
+    write(connfd, msg, strlen(msg));
+    memset(msg, 0, sizeof(msg));
+    if (read(connfd, msg, sizeof(msg)) < 0) return -1;
+    if (user_id < 0) return -1;
+
+    std::string passwd(msg);
+    size_t next_line = passwd.find("\n");
+    passwd.erase(next_line);
+    int fd = open("./name_passwd.txt", O_RDONLY);
+    char data[MY_LINE_MAX], *line, *d; 
+    d = data;
+    read(fd, data, sizeof(data));
+    while ((line = strtok_r(d, "\r\n", &d)) != NULL) {
+        if (strstr(line, name) == NULL) continue;
+        char *tmp = strtok_r(line, " ", &line);
+        if (strcmp(line, passwd.c_str()) == 0) return user_id;
+        else return -1;
+    }   
+    return -1;
 }
 
 void set_root_dir(char *name) {
