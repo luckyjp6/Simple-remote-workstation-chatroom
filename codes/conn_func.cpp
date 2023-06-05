@@ -238,6 +238,7 @@ void handle_load_file(int connfd) {
     } else if (memcmp(buf, "worm_download", strlen("worm_download")) == 0) {
         char file_path[500] = {0};
         memcpy(file_path, buf+14, len-14);
+        if (file_path[0] == '~') file_path[0] = '.';
 
         int fd = open(file_path, O_RDONLY);
         if (fd < 0) err_sys("source file");
