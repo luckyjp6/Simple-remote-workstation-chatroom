@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
 	for ( ; ; ) {
         int new_id = handle_new_connection(connfd, listenfd);
         if (new_id < 0) {
+            printf("failed\n");
             close(connfd);
             continue;
         }

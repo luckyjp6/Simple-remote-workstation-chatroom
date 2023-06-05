@@ -51,6 +51,7 @@ int main(int argc, char **argv) {
     // get args
     char *server_IP = s_IP;
     user_name = strtok_r(argv[1], "@", &server_IP);
+    // printf("%s\n", server_IP);
     
     // set socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -70,36 +71,39 @@ int main(int argc, char **argv) {
     // input user name
     read(sockfd, buf, MY_LINE_MAX);
     write(sockfd, user_name, std::min((int)strlen(user_name), MY_NAME_MAX));
-    write(sockfd, "\n", 1);
+    // write(sockfd, "\n", 1);
 
     // input passwd
+    memset(buf, 0, sizeof(buf));
     termios old_attr, new_attr;
     tcgetattr(STDIN_FILENO, &old_attr);
     new_attr = old_attr;
     new_attr.c_lflag &= ~ECHO;
     tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
 
-    read(sockfd, buf, MY_LINE_MAX);
-    write(1, buf, strlen(buf));
-    read(0, buf, MY_LINE_MAX);
-    write(sockfd, buf, strlen(buf));
+    if (read(sockfd, buf, MY_LINE_MAX) <= 0) err_sys("read socket");
+    if (write(1, buf, strlen(buf)) <= 0) err_sys("write 1");
+    if (read(0, buf, MY_LINE_MAX) <= 0) err_sys("read 0");
+    if (write(sockfd, buf, strlen(buf)) <= 0) err_sys("write socket");
     if (strstr(buf, "Wrong password") != NULL) return -1;
-    write(1, "\n", 1);
+    if (write(1, "\n", 1) <= 0) err_sys("write \n");
 
     tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
 
     for ( ; ; ) {
         nready = poll(p_fd, 2, -1);
         memset(buf, 0, sizeof(buf));
-        
+
         // user input
         if (p_fd[0].revents & POLLIN) {
+            // printf("input\n");
             int len = read(0, buf, MY_LINE_MAX);
             
             // error & EOF
             if (len < 0) err_sys("stdin");
             else if (len == 0) {
                 write(1, "\n", 1);
+                printf("len == 0\n");
                 return 0;
             }
 
@@ -117,12 +121,15 @@ int main(int argc, char **argv) {
             // else 
             write(sockfd, buf, len);
         } else if(p_fd[1].revents & POLLIN) {
+            // printf("socket\n");
             int len = read(sockfd, buf, MY_LINE_MAX);
 
             // error & EOF
             if (len < 0) err_sys("remote");
             else if (len == 0) {
                 write(1, "\n", 1);
+                // printf("socket len == %d\n", strlen(buf));
+                // if (write(sockfd, "\n", 1) < 0) err_sys("write socket nn");
                 return 0;
             }
 
