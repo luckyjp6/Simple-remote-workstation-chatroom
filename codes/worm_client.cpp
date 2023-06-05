@@ -80,10 +80,11 @@ int main(int argc, char **argv) {
     tcsetattr(STDIN_FILENO, TCSANOW, &new_attr);
 
     read(sockfd, buf, MY_LINE_MAX);
-    write(0, buf, strlen(buf));
+    write(1, buf, strlen(buf));
     read(0, buf, MY_LINE_MAX);
     write(sockfd, buf, strlen(buf));
-    write(0, "\n", 1);
+    if (strstr(buf, "Wrong password") != NULL) return -1;
+    write(1, "\n", 1);
 
     tcsetattr(STDIN_FILENO, TCSANOW, &old_attr);
 
@@ -93,7 +94,6 @@ int main(int argc, char **argv) {
         
         // user input
         if (p_fd[0].revents & POLLIN) {
-            // char ch = getch();
             int len = read(0, buf, MY_LINE_MAX);
             
             // error & EOF
@@ -104,12 +104,17 @@ int main(int argc, char **argv) {
             }
 
             // upload file
-            if (memcmp(buf, "worm_upload ", 11) == 0) {
-                char *b = buf;
-                char *filename = strtok_r(b, " ", &b);
-                int fd = open(filename, O_RDONLY, 0);
-                if (fd < 0) {}
-            }
+            // if (memcmp(buf, "worm_upload ", 12) == 0) {
+            //     char *filename = buf;
+            //     char *tmp = strtok_r(filename, " ", &filename);
+            //     int fd = open(filename, O_RDONLY, 0);
+            //     if (fd < 0) perror(filename);
+            //     else {
+            //         printf("upload %s\n", filename);
+            //     }
+            //     write(sockfd, "\n", 1);
+            // }
+            // else 
             write(sockfd, buf, len);
         } else if(p_fd[1].revents & POLLIN) {
             int len = read(sockfd, buf, MY_LINE_MAX);

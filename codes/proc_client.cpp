@@ -78,10 +78,11 @@ int execute_line(char *line) {
 
     bool interrupt = false;
     int status = 0;
-    for (int i = 0; (i < C.size()) && !interrupt; i++)
+    for (int i = 0; (i < C.size()); i++)
     {
         if (i % 50 == 0 && i != 0) wait_all_children();
         if ((status = execute_command(C[i])) < 0) {
+            // printf("status: %d\n", status); fflush(stdout);
             switch (status)
             {
             case -1: // exit
@@ -89,7 +90,12 @@ int execute_line(char *line) {
             case -2: // error of input file (file redirection)
                 interrupt = true;
                 break;
+            case -3: // for fork test
+                printf("num inst: %d\n", i); fflush(stdout);
+                interrupt = true;
+                break;
             }
+            break;
         }
     }
     if (normal_pipe >= 0) {
@@ -113,7 +119,7 @@ int execute_command(my_cmd &command) {
     {
         if (command.argv.size() < 3)
         {
-            printf("Usage: setenv [Variable] [Value].\n");
+            printf("Usage: setenv [env_name] [value].\n");
 	        return 0;
         }
         setenv(command.argv[1].data(), command.argv[2].data(), 1);
@@ -123,7 +129,7 @@ int execute_command(my_cmd &command) {
     {
         if (command.argv.size() < 2) 
         {
-            printf("Usage: printenv [Variable].\n");
+            printf("Usage: printenv [env_name].\n");
             return 0;
         }
 
@@ -178,11 +184,11 @@ int execute_command(my_cmd &command) {
     if (command.pipe) { pipe(out_pipe); cmd.out = out_pipe[1]; }
     
     /* fork */
-    pid = fork();
-    if (pid < 0) 
+    while ((pid = fork()) < 0)
+    // if (pid < 0) 
     {
-        printf("failed to fork\n");
-        return 0;
+        printf("failed to fork\n"); fflush(stdout);
+        // return -3;
     }
 
     /* parent do */

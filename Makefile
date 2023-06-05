@@ -39,4 +39,4 @@ test: codes/test.cpp
 
 .PHONY: clean
 clean:
-	-rm $(TOTAL) worm_server worm_client
+	-rm $(TOTAL) worm_server worm_client worm_cp worm_upload

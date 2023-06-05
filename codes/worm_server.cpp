@@ -30,7 +30,6 @@ int main(int argc, char **argv) {
 	for ( ; ; ) {
         int new_id = handle_new_connection(connfd, listenfd);
         if (new_id < 0) {
-            write(connfd, "Wrong password\n", 15);
             close(connfd);
             continue;
         }

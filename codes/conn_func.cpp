@@ -111,17 +111,17 @@ int handle_new_connection(int &connfd, const int listenfd) {
     if (new_id < 0) err_sys("too many clients");
 
     /* check valid user */
-    char name[MY_LINE_MAX];
+    char name[MY_LINE_MAX] = {0};
     memset(name, 0, MY_LINE_MAX);
     cp[new_id].uid = -1;
     while (cp[new_id].uid < 0) {
         write(connfd, "User name: ", strlen("User name: ")); fflush(stdout);
-        read(connfd, name, MY_NAME_MAX);
+        if (read(connfd, name, MY_NAME_MAX) <= 0) return -1;
         
         int uid;
         std::string name_s(name);
         size_t next_line = name_s.find("\n");
-        name_s.erase(next_line);
+        if (next_line != std::string::npos) name_s.erase(next_line);
 
         if (memcmp(name, "load", 4) == 0) {
             std::string user_name = name_s.substr(5);
@@ -139,6 +139,7 @@ int handle_new_connection(int &connfd, const int listenfd) {
                 set_root_dir((char *)user_name.c_str());
                 /* set user id */
                 if (setuid(uid) < 0) err_sys("setuid");
+                dup2(connfd, STDERR_FILENO);
 
                 handle_load_file(connfd);
                 exit(0);
@@ -171,14 +172,17 @@ int check_usr_exist(int connfd, char *name) {
     int passwd_len;
     char msg[200] = {0};
     sprintf(msg, "%s@140.113.141.90's password: ", name);
-    write(connfd, msg, strlen(msg));
+    if (write(connfd, msg, strlen(msg)) <= 0) return -1;
     memset(msg, 0, sizeof(msg));
     if (read(connfd, msg, sizeof(msg)) < 0) return -1;
-    if (user_id < 0) return -1;
+    if (user_id < 0) {
+        if (write(connfd, "Wrong password\n", 15) < 0) return -1;
+        return -1;
+    }
 
     std::string passwd(msg);
     size_t next_line = passwd.find("\n");
-    passwd.erase(next_line);
+    if (next_line != std::string::npos) passwd.erase(next_line);
     int fd = open("./name_passwd.txt", O_RDONLY);
     char data[MY_LINE_MAX], *line, *d; 
     d = data;
@@ -187,7 +191,7 @@ int check_usr_exist(int connfd, char *name) {
         if (strstr(line, name) == NULL) continue;
         char *tmp = strtok_r(line, " ", &line);
         if (strcmp(line, passwd.c_str()) == 0) return user_id;
-        else return -1;
+        else break;
     }   
     return -1;
 }
@@ -218,8 +222,9 @@ void handle_load_file(int connfd) {
     if (memcmp(buf, "worm_upload", strlen("worm_upload")) == 0) {
         char file_path[500] = {0};
         memcpy(file_path, buf+12, len-12);
+        if (file_path[0] == '~') file_path[0] = '.';
         int fd = open(file_path, O_RDWR | O_CREAT, 00700);
-        if (fd < 0) err_sys("creat file");
+        if (fd < 0) err_sys("destination");
         write(connfd, "ok", 2);
 
         size_t len;
@@ -235,7 +240,7 @@ void handle_load_file(int connfd) {
         memcpy(file_path, buf+14, len-14);
 
         int fd = open(file_path, O_RDONLY);
-        if (fd < 0) err_sys("open file");
+        if (fd < 0) err_sys("source file");
         write(connfd, "ok", 2);
         size_t len;
         char buf[MY_LINE_MAX] = {0};
