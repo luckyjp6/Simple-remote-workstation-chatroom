@@ -20,7 +20,7 @@
     ```./worm_client <user_name>@<server_IP>```
 - upload/download file:
     - upload: ```./worm_cp <src_file> <user_name@server_IP>:<dst_file>```
-    - download: ```./worm_cp <user_name@server_IP>:<src_file> <dst_file>`````
+    - download: ```./worm_cp <user_name@server_IP>:<src_file> <dst_file>```
 
 ## 實作功能 （包含未來可實作功能）
 - Server
