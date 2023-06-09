@@ -122,7 +122,7 @@ int execute_command(my_cmd &command) {
             printf("Usage: setenv [env_name] [value].\n");
 	        return 0;
         }
-        setenv(command.argv[1].data(), command.argv[2].data(), 1);
+        setenv(command.argv[1].c_str(), command.argv[2].c_str(), 1);
         return 0;
     }
     if (command.argv[0] == "printenv") 
@@ -133,7 +133,7 @@ int execute_command(my_cmd &command) {
             return 0;
         }
 
-        char* env_info = getenv(command.argv[1].data());
+        char* env_info = getenv(command.argv[1].c_str());
         if (env_info != NULL) printf("%s\n", env_info);
 
         return 0;
@@ -144,6 +144,12 @@ int execute_command(my_cmd &command) {
             command.argv.push_back(home_path);
         }
         if (command.argv[1] == "~") command.argv[1] = home_path;
+        else if (command.argv[1][0] == '~') {
+            std::string tmp;
+            command.argv[1].erase(0, 1);
+            tmp = home_path + command.argv[1];
+            command.argv[1] = tmp;
+        }
         if (chdir(command.argv[1].c_str()) < 0) perror("cd");
         return 0;
     }
@@ -256,22 +262,29 @@ void parse_line(char *line) {
 			// add commands
 			C.push_back(tmp);
 			tmp.clear();
-		}
-        else if (s == "<") {
+		} else if (s == "<") {
             char *path = strtok_r(line, new_args, &line);
             tmp.input_path = path;
-        }
-		else if (s == ">") {
+        } else if (s == ">") {
             char *path = strtok_r(line, new_args, &line);
             tmp.output_path = path;
             tmp.append = false;
-        }
-        else if (s == ">>") {
+        } else if (s == ">>") {
             char *path = strtok_r(line, new_args, &line);
             tmp.output_path = path;
             tmp.append = true;
-        }
-		else tmp.argv.push_back(s);
+        } else if (s[0] == '$') {
+            s.erase(0, 1);
+            char *env_value = getenv(s.c_str());
+            std::string v = "";
+            if (env_value == NULL) {
+                std::string v = "";
+                tmp.argv.push_back(v);
+            } else {
+                std::string v(env_value);
+                tmp.argv.push_back(v);
+            }
+        } else tmp.argv.push_back(s);
 
 		command = strtok_r(line, new_args, &line);
 	}

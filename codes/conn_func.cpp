@@ -176,7 +176,7 @@ int check_usr_exist(int connfd, char *name) {
     memset(msg, 0, sizeof(msg));
     if (read(connfd, msg, sizeof(msg)) < 0) return -1;
     if (user_id < 0) {
-        if (write(connfd, "Wrong password\n", 15) < 0) return -1;
+        write(connfd, "Wrong password\n", 15);
         return -1;
     }
 
@@ -193,6 +193,7 @@ int check_usr_exist(int connfd, char *name) {
         if (strcmp(line, passwd.c_str()) == 0) return user_id;
         else break;
     }   
+    write(connfd, "Wrong password\n", 15);
     return -1;
 }
 
