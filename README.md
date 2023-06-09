@@ -75,32 +75,35 @@
     - 將使用者從系統中刪除
     - 清除使用者家目錄
 
-![](https://hackmd.io/_uploads/HypMUcJvn.png)
-
+![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/c730b91f-39a1-4aa0-b06f-94772d059e56)
 
 ### Server
 - 支援多使用者同時連線
     - 以fork實作
 - 簡易使用者登入（帳號&密碼）
     - 同時會檢查使用者是否屬於worm_server群組
-    - 不存在的使用者 ![](https://hackmd.io/_uploads/SyKr6K1Dn.png)
-    - 錯誤密碼 ![](https://hackmd.io/_uploads/B1-DaYkP2.png)
-    - 正常登入 ![](https://hackmd.io/_uploads/SJI_6YkD2.png)
+    - 不存在的使用者  
+        ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/0c33efb0-73f9-4d92-8946-53b78004e9ab)
+    - 錯誤密碼  
+        ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/7aa3c32c-a598-44fa-9520-311138069bcb)
+    - 正常登入  
+        ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/9a058765-8780-4ef7-a642-be32eaf2fdb2)
 - 登入後自動導向該使用者的home directory
     - 以chdir實作
     - 以使用者ww為例
     
-    ![](https://hackmd.io/_uploads/ryPsy9Jwh.png)
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/ffd2bba9-f63b-4a97-b2d4-ede439780d1d)
 - 使用者僅能存取userspace資料夾下的物件 
     - 以chroot實作
     - 不能取得userspace資料夾外的檔案或資料夾 
     
-    ![](https://hackmd.io/_uploads/ry5A0tyvn.png)
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/b4b82c94-b276-4b7f-9437-70e227b7b41d)
     
 
 ### Shell
 - 歡迎訊息
-    - 包含當前線上人數和使用者名稱 ![](https://hackmd.io/_uploads/BkXmYFJv3.png)
+    - 包含當前線上人數和使用者名稱  
+        ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/570dc108-0a2b-430c-b788-34b14e406345)
 
 - 環境變數
     - setenv [var name] [value]：新增或變更環境變數。
@@ -109,20 +112,21 @@
         - 使用getenv實作
     - 環境變數解析格式：```$[envname]``` 
 
-    ![](https://hackmd.io/_uploads/Skv9Ytywh.png)
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/dcd92109-2829-4a62-8f4f-4f8366b53167)
 - 路徑處理
     - cd
         - 使用chdir實作
     - Home directory處理
     - 命令列路徑prefix
 
-    ![](https://hackmd.io/_uploads/H1V2GcyDn.png)
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/681cbe23-fe32-496b-a0ff-4d2574b1d2fe)
 - 顯示線上使用者 
     - 使用share memory實作
     - ```who``` 
     
-    ![](https://hackmd.io/_uploads/BJ_Am5yvh.png)
-- Pipe, file redirection ![](https://hackmd.io/_uploads/HkOcuqyP3.png)
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/2f1085cd-5224-47ca-81a0-1b8e1860d28c)
+- Pipe, file redirection  
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/fe4e065b-0b75-4417-a92c-00847b4ed20d)
 
 
 ### Client
@@ -132,8 +136,10 @@
 - Server斷線時自動關閉
 - ctrl+C 不會關閉client端，且不影響後續指令輸入
     - 使用signal實作
-- 自製client端： ![](https://hackmd.io/_uploads/rkD4F1xDh.png)
-- nc對照組：![](https://hackmd.io/_uploads/SyTkFJePn.png)
+- 自製client端：  
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/9206e092-7b9c-4df2-a076-b163756416a1)
+- nc對照組：  
+    ![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/d2d2143b-d7bd-4603-89a1-a556e7666b34)
 
 
 ### Upload/Download files
@@ -146,7 +152,7 @@
     6. （L）從工作站下載檔案up.txt，更名為down.txt
     7. （L）使用diff確認檔案一致
 
-![](https://hackmd.io/_uploads/SJcw-xgwh.png)
+![image](https://github.com/luckyjp6/Simple-remote-workstation-chatroom/assets/96563567/38ac6584-1051-432b-b9f3-0ba3f83979e4)
 
 
 
