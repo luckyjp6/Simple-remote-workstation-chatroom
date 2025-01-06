@@ -1,42 +1,45 @@
-TOTAL = conn_func.o proc_client.o worm_server.o
-CXXFLAGS=-std=c++17 -Wall -pedantic -pthread -lboost_system
-CXX_INCLUDE_PARAMS=$(addprefix -I , $(CXX_INCLUDE_DIRS))
-CXX_LIB_PARAMS=$(addprefix -L , $(CXX_LIB_DIRS))
-for_server = conn_func.o proc_client.o worm_server.o
-# for_http = http_server console button
+CXX := g++
+CXXFLAGS := -std=c++17 -Wall -pedantic -pthread -lboost_system
+CXX_INCLUDE_PARAMS := $(addprefix -I , $(CXX_INCLUDE_DIRS))
+CXX_LIB_PARAMS := $(addprefix -L , $(CXX_LIB_DIRS))
 
+SRC_DIR := src/codes
+OBJ_DIR := build
 
-all: server client cp #$(for_http)
+SOURCE := worm_server client_proc shm_manager
+OBJECTS := $(OBJ_DIR)/main.o $(OBJ_DIR)/$(SOURCE:%.cpp=$(OBJ_DIR)/%.o)
+EXECUTABLE := server
 
-server: $(for_server)
-	g++ -o worm_server conn_func.o proc_client.o worm_server.o
+all: $(OBJ_DIR) $(EXECUTABLE)
 
-worm_server.o: codes/worm_server.cpp
-	g++ -c codes/worm_server.cpp
+$(EXECUTABLE): $(OBJECTS) $(SRC_DIR)/util.hpp
+	$(CXX) $(CXXFLAGS) -c $^ -o $@
 
-conn_func.o: codes/conn_func.cpp codes/conn_func.h
-	g++ -c codes/conn_func.cpp
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp $(SRC_DIR)/util.hpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-proc_client.o: codes/proc_client.cpp codes/proc_client.h
-	g++ -c codes/proc_client.cpp
+# $(OBJ_DIR)/main.o: $(SRC_DIR)/main.cpp $(SRC_DIR)/util.hpp
+# 	$(CXX) $(CXXFLAGS) -c $^ -o $@
+# $(OBJ_DIR)/worm_server.o: $(SRC_DIR)/worm_server.cpp $(SRC_DIR)/worm_server.hpp $(SRC_DIR)/client_proc.cpp $(SRC_DIR)/client_proc.hpp $(SRC_DIR)/util.hpp
+# 	$(CXX) $(CXXFLAGS) -c $^ -o $@
+# $(OBJ_DIR)/client_proc.o: $(SRC_DIR)/client_proc.cpp $(SRC_DIR)/client_proc.hpp $(SRC_DIR)/util.hpp
+# 	$(CXX) $(CXXFLAGS) -c $^ -o $@
+# $(OBJ_DIR)/shm_manager.o: $(SRC_DIR)/shm_manager.cpp $(SRC_DIR)/shm_manager.hpp $(SRC_DIR)/util.hpp
+# 	$(CXX) $(CXXFLAGS) -c $^ -o $@
 
-client: codes/worm_client.cpp	
-	g++ -o worm_client codes/worm_client.cpp
+$(OBJ_DIR):
+	mkdir -p $(OBJ_DIR)
 
-cp: codes/worm_cp.cpp
-	g++ -o worm_cp codes/worm_cp.cpp
+print:
+	echo $(OBJECTS)
 
-# http_server: codes/http_server.cpp 
-# 	g++ codes/http_server.cpp -o http_server $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
-# console: codes/console.cpp
-# 	g++ codes/console.cpp -o console.cgi $(CXX_INCLUDE_PARAMS) $(CXX_LIB_PARAMS) $(CXXFLAGS)
-# button: codes/button.cpp
-# 	g++ codes/button.cpp -o button
+# client: codes/worm_client.cpp	
+# 	g++ -o worm_client codes/worm_client.cpp
 
-test: codes/test.cpp
-	g++ -o test codes/test.cpp
-	sudo ./test
+# cp: codes/worm_cp.cpp
+# 	g++ -o worm_cp codes/worm_cp.cpp
+
 
 .PHONY: clean
 clean:
-	-rm $(TOTAL) worm_server worm_client worm_cp worm_upload
+	rm -rf $(OBJ_DIR) $(EXECUTABLE)

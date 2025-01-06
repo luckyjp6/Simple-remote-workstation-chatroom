@@ -9,7 +9,9 @@
 #include <string.h>
 #include <termios.h>
 
-// #include <curses.h>
+#include <curses.h>
+
+#include "util.hpp"
 
 #define MY_LINE_MAX 15000 +100
 #define WORM_PORT 8787
@@ -75,7 +77,7 @@ int main(int argc, char **argv) {
     char buf[MY_LINE_MAX];
 
     /* input user name */
-    user_name = "load " + user_name + "\n";
+    user_name = LOAD_FILE_KEYWORD + user_name + "\n";
     read(sockfd, buf, MY_LINE_MAX);
     write(sockfd, user_name.c_str(), user_name.size());
     
@@ -107,7 +109,7 @@ int main(int argc, char **argv) {
     if (is_local[0]) { // upload
         /* pass upload command */
         std::string s;
-        s = "worm_upload " + path[1]; 
+        s = UPLOAD_COMMAND + path[1]; 
         write(sockfd, s.c_str(), s.size());
         len = read(sockfd, buf, MY_LINE_MAX);
         
@@ -124,7 +126,7 @@ int main(int argc, char **argv) {
     } else { // download
         /* pass download command */
         std::string s;
-        s = "worm_download " + path[0];
+        s = DOWNLOAD_COMMAND" + path[0];
         write(sockfd, s.c_str(), s.size());
         len = read(sockfd, buf, MY_LINE_MAX);
         

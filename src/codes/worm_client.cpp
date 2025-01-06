@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <termios.h>
 
+#include "util.hpp"
 // #include <curses.h>
 
 #define MY_LINE_MAX 15000 +100
@@ -19,12 +20,6 @@
 #define WORM_PORT 8787
 
 int sockfd;
-// std::vector<std::string> cmds;
-
-void err_sys(const char *err) {
-    perror(err);
-    exit(-1);
-}
 
 void sig_int(int signo) {
     char buf[MY_LINE_MAX];
